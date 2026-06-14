@@ -1,0 +1,294 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+@import "tailwindcss";
+
+:root {
+  --bg-page:        #FAF9F6;
+  --bg-card:        #F2F0EB;
+  --bg-card-hover:  #EAE7E0;
+  --sidebar-bg:     #232320;
+  --sidebar-hover:  #2E2E2A;
+  --sidebar-active: #3A3A34;
+  --sidebar-text:   #E8E4DC;
+  --sidebar-muted:  #8A8678;
+  --text-primary:   #1C1B18;
+  --text-secondary: #6B6560;
+  --text-muted:     #9B9590;
+  --border:         #E0DBD3;
+  --border-strong:  #C8C2B8;
+  --accent:         #5C6E4E;
+  --accent-light:   #EBF0E7;
+  --accent-hover:   #4A5A3D;
+  --status-pass:    #4A7C59;
+  --status-pass-bg: #EAF4EE;
+  --status-warn:    #B8860B;
+  --status-warn-bg: #FEF9EC;
+  --status-fail:    #9B3A3A;
+  --status-fail-bg: #FAEAEA;
+  --status-info:    #3A6B9B;
+  --status-info-bg: #EAF2FA;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-serif {
+  font-family: 'DM Serif Display', serif;
+}
+
+.ant-layout { background: var(--bg-page) !important; }
+.ant-table { background: transparent !important; }
+
+.ant-table-thead > tr > th {
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border) !important;
+  font-size: 13.5px !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-table-tbody > tr:hover > td { background: var(--bg-card) !important; }
+
+.ant-card {
+  background: white !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+}
+.ant-card-head { border-bottom: 1px solid var(--border) !important; }
+
+.ant-btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.ant-btn-primary:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+}
+
+.ant-input, .ant-select-selector, .ant-picker {
+  border-color: var(--border) !important;
+  background: white !important;
+}
+.ant-input:focus, .ant-select-focused .ant-select-selector, .ant-picker-focused {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px rgba(92,110,78,0.15) !important;
+}
+
+.ant-tag {
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.ant-steps .ant-steps-item-process .ant-steps-item-icon {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.ant-steps .ant-steps-item-finish .ant-steps-item-icon { border-color: var(--accent) !important; }
+.ant-steps .ant-steps-item-finish .ant-steps-item-icon .anticon { color: var(--accent) !important; }
+.ant-menu-dark { background: transparent !important; }
+
+.stat-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  transition: box-shadow 0.15s ease;
+}
+.stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+
+.section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.section-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.utilisation-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.utilisation-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.page-container { padding: 32px 36px; }
+.block-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* ── Responsive overrides ─────────────────────────── */
+
+/* Tablet (640–1023px) */
+@media (max-width: 1023px) {
+  .page-container { padding: 24px 20px; }
+  .section-title  { font-size: 19px; }
+}
+
+/* Mobile (< 640px) */
+@media (max-width: 639px) {
+  .page-container { padding: 16px 14px; }
+  .section-title  { font-size: 17px; }
+  .section-subtitle { font-size: 12px; margin-bottom: 16px; }
+  .stat-card      { padding: 14px 16px; }
+
+  /* Make all Ant Design tables horizontally scrollable */
+  .ant-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Stack 2-col grids to 1 col */
+  .grid-cols-2,
+  .sm\:grid-cols-2 { grid-template-columns: 1fr !important; }
+
+  /* Stack 3-col grids to 1 col */
+  .grid-cols-3,
+  .sm\:grid-cols-3 { grid-template-columns: 1fr !important; }
+
+  /* Shrink monospace table text */
+  .ant-table-tbody > tr > td { font-size: 12px !important; }
+
+  /* Ant modal full-width on mobile */
+  .ant-modal { margin: 8px !important; max-width: calc(100vw - 16px) !important; }
+  .ant-modal-content { border-radius: 10px !important; }
+
+  /* Topbar breadcrumb — truncate aggressively */
+  .section-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Ensure modals don't overflow horizontally on any device */
+.ant-modal { max-width: calc(100vw - 32px) !important; }
+
+/* Tables always scrollable horizontally */
+.ant-table-wrapper { overflow-x: auto; }
+
+/* Prevent content from overflowing page */
+img, video, canvas, svg { max-width: 100%; }
+
+/* ════════════════════════════════════════════════════════════════════
+   PRINT / PDF ENGINE
+════════════════════════════════════════════════════════════════════ */
+
+.print-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  background: white;
+  border-bottom: 1px solid var(--border);
+}
+
+.print-scroll {
+  background: #EFEAE2;
+  padding: 28px 0 60px;
+  min-height: 100vh;
+}
+
+.print-sheet {
+  background: white;
+  margin: 0 auto 28px;
+  box-shadow: 0 2px 18px rgba(0,0,0,0.10);
+}
+.print-sheet-portrait  { width: 210mm; min-height: 297mm; }
+.print-sheet-landscape { width: 297mm; min-height: 210mm; }
+
+.print-page { position: relative; padding: 14mm 14mm; display: flex; flex-direction: column; }
+.print-page + .print-page { margin-top: 0; }
+
+.print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(155, 58, 58, 0.10);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 0;
+  text-transform: uppercase;
+}
+
+.print-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid var(--text-primary);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+}
+.print-logo {
+  width: 44px; height: 44px; border-radius: 6px; flex-shrink: 0;
+  background: var(--accent); color: white; display: flex;
+  align-items: center; justify-content: center;
+  font-family: 'DM Serif Display', serif; font-size: 20px;
+}
+.print-company { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.print-form-title { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text-primary); margin-top: 2px; }
+.print-meta { text-align: right; font-size: 10.5px; color: var(--text-secondary); line-height: 1.6; }
+
+.print-page-title {
+  font-family: 'DM Serif Display', serif; font-size: 15px; color: var(--text-primary);
+  margin-bottom: 12px; position: relative; z-index: 1;
+}
+
+.print-body { flex: 1; position: relative; z-index: 1; }
+
+.print-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border-top: 1px solid var(--border-strong); padding-top: 8px; margin-top: 18px;
+  font-size: 9.5px; color: var(--text-muted); position: relative; z-index: 1;
+}
+
+.print-sig-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.print-sig-table th, .print-sig-table td {
+  border: 1px solid var(--border-strong); padding: 6px 8px; text-align: left;
+}
+.print-sig-table th {
+  background: var(--bg-card); color: var(--text-secondary);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .print-scroll { background: white; padding: 0; min-height: 0; }
+  .print-sheet { box-shadow: none; margin: 0; }
+  .print-page { break-after: page; }
+  .print-page:last-child { break-after: auto; }
+}

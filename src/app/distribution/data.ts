@@ -70,10 +70,11 @@ export type CCSet = {
   apsRef: string;   // e.g. "APS042.02"
   prepDate: string;
   levels: CCSetLevel[];
-  status: "active" | "expired" | "depleted";
 };
 
 // ── NEW: QC Sample (individual prepared QC batch with ID) ──────────────────
+// CC and QC samples are consumables — retrieved, used in the run, then discarded.
+// There is no "depleted" or remaining-count concept; each ID is simply available or not.
 
 export type QCSample = {
   id: string;       // "HQC-002"
@@ -81,9 +82,7 @@ export type QCSample = {
   analyte: string;
   qcType: "HQC" | "MQC" | "LQC" | "LLOQ QC";
   conc: string;     // nominal concentration
-  remaining: number;
   prepDate: string;
-  status: "available" | "depleted" | "expired";
 };
 
 // ── NEW: Other Sample Item (SES, SP, BLK/BLK, Pooled Plasma, Matrix Lot…) ──
@@ -149,7 +148,7 @@ export const PROJECT_APS: Record<string, Record<string, ApsEntry>> = {
 export const CC_SETS: CCSet[] = [
   {
     id: "CC-001", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
-    prepDate: "02 May 2026", status: "active",
+    prepDate: "02 May 2026",
     levels: [
       { tubeId:"CC-001-L1", level:"CC1", conc:"1.00",   unit:"ng/mL" },
       { tubeId:"CC-001-L2", level:"CC2", conc:"2.00",   unit:"ng/mL" },
@@ -163,7 +162,7 @@ export const CC_SETS: CCSet[] = [
   },
   {
     id: "CC-002", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
-    prepDate: "10 May 2026", status: "active",
+    prepDate: "10 May 2026",
     levels: [
       { tubeId:"CC-002-L1", level:"CC1", conc:"1.00",   unit:"ng/mL" },
       { tubeId:"CC-002-L2", level:"CC2", conc:"2.00",   unit:"ng/mL" },
@@ -177,7 +176,7 @@ export const CC_SETS: CCSet[] = [
   },
   {
     id: "CC-003", project: "SID-2026-001", analyte: "MET-G", apsRef: "APS043.01",
-    prepDate: "02 May 2026", status: "active",
+    prepDate: "02 May 2026",
     levels: [
       { tubeId:"CC-003-L1", level:"CC1", conc:"0.50",   unit:"ng/mL" },
       { tubeId:"CC-003-L2", level:"CC2", conc:"1.00",   unit:"ng/mL" },
@@ -191,7 +190,7 @@ export const CC_SETS: CCSet[] = [
   },
   {
     id: "CC-004", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
-    prepDate: "05 May 2026", status: "active",
+    prepDate: "05 May 2026",
     levels: [
       { tubeId:"CC-004-L1", level:"CC1", conc:"0.10",  unit:"ng/mL" },
       { tubeId:"CC-004-L2", level:"CC2", conc:"0.20",  unit:"ng/mL" },
@@ -205,7 +204,7 @@ export const CC_SETS: CCSet[] = [
   },
   {
     id: "CC-005", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
-    prepDate: "14 May 2026", status: "depleted",
+    prepDate: "14 May 2026",
     levels: [
       { tubeId:"CC-005-L1", level:"CC1", conc:"0.10",  unit:"ng/mL" },
       { tubeId:"CC-005-L2", level:"CC2", conc:"0.20",  unit:"ng/mL" },
@@ -220,35 +219,33 @@ export const CC_SETS: CCSet[] = [
 ];
 
 // ── QC Samples (prepared QC batches with IDs; fast/fasted scenario shown) ─
+// CC and QC are consumables — retrieved, used, discarded. No remaining count.
 
 export const QC_SAMPLES: QCSample[] = [
-  // SID-2026-001 / MET — HQC (HQC-001 used up in first study period)
-  { id:"HQC-001", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", remaining:0,  prepDate:"01 Apr 2026", status:"depleted"  },
-  { id:"HQC-002", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", remaining:12, prepDate:"01 May 2026", status:"available" },
-  { id:"HQC-003", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", remaining:24, prepDate:"10 May 2026", status:"available" },
-  // MQC
-  { id:"MQC-001", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  remaining:0,  prepDate:"01 Apr 2026", status:"depleted"  },
-  { id:"MQC-002", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  remaining:8,  prepDate:"01 May 2026", status:"available" },
-  { id:"MQC-003", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  remaining:20, prepDate:"10 May 2026", status:"available" },
-  // LQC
-  { id:"LQC-001", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   remaining:0,  prepDate:"01 Apr 2026", status:"depleted"  },
-  { id:"LQC-002", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   remaining:6,  prepDate:"01 May 2026", status:"available" },
-  { id:"LQC-003", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   remaining:18, prepDate:"10 May 2026", status:"available" },
-  // LLOQ QC
-  { id:"LLOQQC-001", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", remaining:0,  prepDate:"01 Apr 2026", status:"depleted"  },
-  { id:"LLOQQC-002", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", remaining:5,  prepDate:"01 May 2026", status:"available" },
-  { id:"LLOQQC-003", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", remaining:15, prepDate:"10 May 2026", status:"available" },
+  // SID-2026-001 / MET — multiple HQC batches support fast/fasted two-study scenario
+  { id:"HQC-001", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", prepDate:"01 Apr 2026" },
+  { id:"HQC-002", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", prepDate:"01 May 2026" },
+  { id:"HQC-003", project:"SID-2026-001", analyte:"MET", qcType:"HQC",     conc:"150.00", prepDate:"10 May 2026" },
+  { id:"MQC-001", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  prepDate:"01 Apr 2026" },
+  { id:"MQC-002", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  prepDate:"01 May 2026" },
+  { id:"MQC-003", project:"SID-2026-001", analyte:"MET", qcType:"MQC",     conc:"50.00",  prepDate:"10 May 2026" },
+  { id:"LQC-001", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   prepDate:"01 Apr 2026" },
+  { id:"LQC-002", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   prepDate:"01 May 2026" },
+  { id:"LQC-003", project:"SID-2026-001", analyte:"MET", qcType:"LQC",     conc:"3.00",   prepDate:"10 May 2026" },
+  { id:"LLOQQC-001", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", prepDate:"01 Apr 2026" },
+  { id:"LLOQQC-002", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", prepDate:"01 May 2026" },
+  { id:"LLOQQC-003", project:"SID-2026-001", analyte:"MET", qcType:"LLOQ QC", conc:"1.00", prepDate:"10 May 2026" },
   // SID-2026-001 / MET-G
-  { id:"HQC-G-001", project:"SID-2026-001", analyte:"MET-G", qcType:"HQC",     conc:"75.00", remaining:10, prepDate:"02 May 2026", status:"available" },
-  { id:"MQC-G-001", project:"SID-2026-001", analyte:"MET-G", qcType:"MQC",     conc:"25.00", remaining:10, prepDate:"02 May 2026", status:"available" },
-  { id:"LQC-G-001", project:"SID-2026-001", analyte:"MET-G", qcType:"LQC",     conc:"1.50",  remaining:10, prepDate:"02 May 2026", status:"available" },
-  { id:"LLOQQC-G-001", project:"SID-2026-001", analyte:"MET-G", qcType:"LLOQ QC", conc:"0.50", remaining:8, prepDate:"02 May 2026", status:"available" },
+  { id:"HQC-G-001",    project:"SID-2026-001", analyte:"MET-G", qcType:"HQC",     conc:"75.00", prepDate:"02 May 2026" },
+  { id:"MQC-G-001",    project:"SID-2026-001", analyte:"MET-G", qcType:"MQC",     conc:"25.00", prepDate:"02 May 2026" },
+  { id:"LQC-G-001",    project:"SID-2026-001", analyte:"MET-G", qcType:"LQC",     conc:"1.50",  prepDate:"02 May 2026" },
+  { id:"LLOQQC-G-001", project:"SID-2026-001", analyte:"MET-G", qcType:"LLOQ QC", conc:"0.50",  prepDate:"02 May 2026" },
   // SID-2026-002 / AML
-  { id:"HQC-A-001", project:"SID-2026-002", analyte:"AML", qcType:"HQC",     conc:"15.00", remaining:16, prepDate:"05 May 2026", status:"available" },
-  { id:"HQC-A-002", project:"SID-2026-002", analyte:"AML", qcType:"HQC",     conc:"15.00", remaining:20, prepDate:"14 May 2026", status:"available" },
-  { id:"MQC-A-001", project:"SID-2026-002", analyte:"AML", qcType:"MQC",     conc:"5.00",  remaining:16, prepDate:"05 May 2026", status:"available" },
-  { id:"LQC-A-001", project:"SID-2026-002", analyte:"AML", qcType:"LQC",     conc:"0.30",  remaining:12, prepDate:"05 May 2026", status:"available" },
-  { id:"LLOQQC-A-001", project:"SID-2026-002", analyte:"AML", qcType:"LLOQ QC", conc:"0.10", remaining:10, prepDate:"05 May 2026", status:"available" },
+  { id:"HQC-A-001",    project:"SID-2026-002", analyte:"AML", qcType:"HQC",     conc:"15.00", prepDate:"05 May 2026" },
+  { id:"HQC-A-002",    project:"SID-2026-002", analyte:"AML", qcType:"HQC",     conc:"15.00", prepDate:"14 May 2026" },
+  { id:"MQC-A-001",    project:"SID-2026-002", analyte:"AML", qcType:"MQC",     conc:"5.00",  prepDate:"05 May 2026" },
+  { id:"LQC-A-001",    project:"SID-2026-002", analyte:"AML", qcType:"LQC",     conc:"0.30",  prepDate:"05 May 2026" },
+  { id:"LLOQQC-A-001", project:"SID-2026-002", analyte:"AML", qcType:"LLOQ QC", conc:"0.10",  prepDate:"05 May 2026" },
 ];
 
 // ── Other Sample Items (SES, SP, BLK/BLK, LLOQ, ULOQ, Pooled Plasma, Matrix Lot) ──

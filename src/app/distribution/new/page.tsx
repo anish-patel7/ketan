@@ -3,21 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
-import StatusTag from "@/components/ui/StatusTag";
 import {
   Button, Select, Table, Input, InputNumber,
-  Checkbox, Tabs, Tooltip, Tag, message,
+  Checkbox, Tabs, Tooltip, message,
 } from "antd";
 import {
   ArrowLeft, FlaskConical, Lock, Unlock, FileDown,
-  CheckCircle2, GripVertical, Info,
+  CheckCircle2, GripVertical,
 } from "lucide-react";
 import {
   PROJECTS_LIST, MASTERSHEET, PROJECT_APS,
   CC_SETS, QC_SAMPLES, OTHER_SAMPLE_ITEMS,
   buildDistributionSheet, nextRunNo, nextDsId, addDsRecord, loadDsRecords,
   type DSRecord, type SampleRow, type SelectedQcMap,
-  type CCSet, type QCSample, type OtherSampleItem,
+  type QCSample, type OtherSampleItem,
 } from "../data";
 import { TYPE_COLORS } from "../runColumns";
 
@@ -208,17 +207,15 @@ export default function NewDistributionPage() {
           {options.map(q => (
             <label key={q.id} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
-              borderRadius: 7, cursor: q.status !== "available" ? "not-allowed" : "pointer",
-              background: selected.includes(q.id) ? "var(--accent-light)" : q.status === "depleted" ? "#FAFAFA" : "white",
+              borderRadius: 7, cursor: "pointer",
+              background: selected.includes(q.id) ? "var(--accent-light)" : "white",
               border: `1px solid ${selected.includes(q.id) ? "var(--accent)" : "var(--border)"}`,
-              opacity: q.status !== "available" ? 0.5 : 1, transition: "all 0.12s",
+              transition: "all 0.12s",
             }}>
-              <Checkbox checked={selected.includes(q.id)} disabled={q.status !== "available"}
+              <Checkbox checked={selected.includes(q.id)}
                 onChange={e => toggleQcId(type, q.id, e.target.checked)} />
-              <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--accent)", minWidth: 80 }}>{q.id}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
-                {q.remaining > 0 ? `${q.remaining} left` : "depleted"}
-              </span>
+              <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>{q.id}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{q.prepDate}</span>
             </label>
           ))}
         </div>
@@ -416,21 +413,14 @@ export default function NewDistributionPage() {
               <Select style={{ width: "100%" }} placeholder={dProject ? "Select CC set…" : "Select project first"}
                 value={selectedCcSetId || undefined} onChange={handleCcSetSelect} disabled={!dProject}>
                 {ccSetsForProject.map(s => (
-                  <Option key={s.id} value={s.id} disabled={s.status !== "active"}>
+                  <Option key={s.id} value={s.id}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12,
-                        color: s.status === "active" ? "var(--accent)" : "var(--text-muted)" }}>
+                      <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12, color: "var(--accent)" }}>
                         {s.id}
                       </span>
                       <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
                         {s.analyte} · {s.prepDate}
                       </span>
-                      {s.status !== "active" && (
-                        <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700,
-                          background: "#FDECEA", color: "#B71C1C", padding: "1px 5px", borderRadius: 4 }}>
-                          {s.status}
-                        </span>
-                      )}
                     </div>
                   </Option>
                 ))}

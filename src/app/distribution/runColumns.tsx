@@ -10,7 +10,9 @@ export const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   "BLK/BLK": { bg:"#ECEAE5", color:"#6B6560" },
   "LLOQ":    { bg:"#E8F5F0", color:"#2E8A6B" },
   "ULOQ":    { bg:"#FBEEE0", color:"#B8702A" },
-  "Subject": { bg:"var(--bg-card)", color:"var(--text-secondary)" },
+  "Subject":       { bg:"var(--bg-card)",   color:"var(--text-secondary)" },
+  "Pooled Plasma": { bg:"#E8F5F0",          color:"#2E8A6B" },
+  "Matrix Lot":    { bg:"#F5F0E8",          color:"#8A6B2E" },
 };
 
 export const runCols = [

@@ -1,557 +1,662 @@
 "use client";
 
-import { Suspense, useState, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
-import { Button, Select, Table, Input, InputNumber, Checkbox, message } from "antd";
+import StatusTag from "@/components/ui/StatusTag";
 import {
-  ArrowLeft, ArrowRight, Send, Download, CheckCircle2,
-  ChevronRight, Snowflake, PackageSearch, FlaskConical,
+  Button, Select, Table, Input, InputNumber,
+  Checkbox, Tabs, Tooltip, Tag, message,
+} from "antd";
+import {
+  ArrowLeft, FlaskConical, Lock, Unlock, FileDown,
+  CheckCircle2, GripVertical, Info,
 } from "lucide-react";
 import {
-  PROJECTS_LIST, PROJECT_APS, MASTERSHEET, DEFAULT_OTHER_SAMPLES,
-  type SampleRow, type MasterSample, type DSRecord, type OtherSamplesConfig,
-  buildRunLayout, nextRunNo, nextDsId, loadDsRecords, addDsRecord,
+  PROJECTS_LIST, MASTERSHEET, PROJECT_APS,
+  CC_SETS, QC_SAMPLES, OTHER_SAMPLE_ITEMS,
+  buildDistributionSheet, nextRunNo, nextDsId, addDsRecord, loadDsRecords,
+  type DSRecord, type SampleRow, type SelectedQcMap,
+  type CCSet, type QCSample, type OtherSampleItem,
 } from "../data";
-import { runCols } from "../runColumns";
+import { TYPE_COLORS } from "../runColumns";
 
 const { Option } = Select;
 
-const STEPS = [
-  { n: 1, label: "Select Project & APS" },
-  { n: 2, label: "Select Samples from Mastersheet" },
-  { n: 3, label: "Review & Submit" },
+const OTHER_TYPES: Array<{ type: OtherSampleItem["type"]; label: string }> = [
+  { type: "SES",          label: "SES"          },
+  { type: "SP",           label: "SP"           },
+  { type: "BLK/BLK",     label: "BLK / BLK"    },
+  { type: "LLOQ",         label: "LLOQ"         },
+  { type: "ULOQ",         label: "ULOQ"         },
+  { type: "Pooled Plasma",label: "Pooled Plasma" },
+  { type: "Matrix Lot",   label: "Matrix Lot"   },
 ];
 
-const OTHER_SAMPLE_OPTIONS: { key: keyof OtherSamplesConfig; label: string }[] = [
-  { key:"ses",    label:"SES" },
-  { key:"sp",     label:"SP" },
-  { key:"blkBlk", label:"BLK/BLK" },
-  { key:"lloq",   label:"LLOQ" },
-  { key:"uloq",   label:"ULOQ" },
-];
-
-function NewDistributionSheetForm() {
+export default function NewDistributionPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const projectFromQuery = searchParams.get("project") ?? "";
-  const projectLocked = PROJECTS_LIST.some(p => p.id === projectFromQuery);
 
-  const [step,           setStep]           = useState<1 | 2 | 3>(1);
-  const [bProject,       setBProject]       = useState(projectLocked ? projectFromQuery : "");
-  const [bAnalyte,       setBAnalyte]       = useState("");
-  const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set());
-  const [sampleFilter,   setSampleFilter]   = useState("");
-  const [builtRows,      setBuiltRows]      = useState<SampleRow[]>([]);
-  const [submitPassword, setSubmitPassword] = useState("");
-  const [qcSets,         setQcSets]         = useState(1);
-  const [otherSamples,   setOtherSamples]   = useState<OtherSamplesConfig>({ ...DEFAULT_OTHER_SAMPLES });
+  // ── Selection state ───────────────────────────────────────────────────────
+  const [dProject,          setDProject]          = useState("");
+  const [selectedCcSetId,   setSelectedCcSetId]   = useState("");
+  const [selectedCcTubeIds, setSelectedCcTubeIds] = useState<Set<string>>(new Set());
+  const [selHqc,            setSelHqc]            = useState<string[]>([]);
+  const [selMqc,            setSelMqc]            = useState<string[]>([]);
+  const [selLqc,            setSelLqc]            = useState<string[]>([]);
+  const [selLloqQc,         setSelLloqQc]         = useState<string[]>([]);
+  const [dQcSets,           setDQcSets]           = useState(1);
+  const [selectedOtherIds,  setSelectedOtherIds]  = useState<string[]>([]);
+  const [dRunName,          setDRunName]           = useState("");
 
-  // ── Derived ──
+  // ── Sheet state ───────────────────────────────────────────────────────────
+  const [sheetRows,  setSheetRows]  = useState<SampleRow[]>([]);
+  const [sheetBuilt, setSheetBuilt] = useState(false);
+  const [sheetLocked,setSheetLocked]= useState(false);
+  const [activeTab,  setActiveTab]  = useState("sheet");
+  const [dragIdx,    setDragIdx]    = useState<number | null>(null);
+  const [dragOverIdx,setDragOverIdx]= useState<number | null>(null);
 
-  const bProject_obj = PROJECTS_LIST.find(p => p.id === bProject);
-  const bApsData      = bProject && bAnalyte ? PROJECT_APS[bProject]?.[bAnalyte] : undefined;
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const dCcSet   = CC_SETS.find(s => s.id === selectedCcSetId);
+  const dAnalyte = dCcSet?.analyte ?? "";
+  const dApsData = dProject && dAnalyte ? PROJECT_APS[dProject]?.[dAnalyte] : undefined;
 
-  const runNo = useMemo(
-    () => (bProject && bAnalyte ? nextRunNo(loadDsRecords(), bProject, bAnalyte) : 0),
-    [bProject, bAnalyte]
-  );
+  const ccSetsForProject = CC_SETS.filter(s => s.project === dProject);
 
-  const masterFiltered = useMemo(() => MASTERSHEET.filter(s =>
-    s.project === bProject &&
-    s.analyte === bAnalyte &&
-    (!sampleFilter || s.subject.includes(sampleFilter) || s.tp.includes(sampleFilter))
-  ), [bProject, bAnalyte, sampleFilter]);
+  const qcCtx        = QC_SAMPLES.filter(s => s.project === dProject && s.analyte === dAnalyte);
+  const hqcOptions   = qcCtx.filter(q => q.qcType === "HQC");
+  const mqcOptions   = qcCtx.filter(q => q.qcType === "MQC");
+  const lqcOptions   = qcCtx.filter(q => q.qcType === "LQC");
+  const lloqQcOptions= qcCtx.filter(q => q.qcType === "LLOQ QC");
 
-  // ── Step 1 handlers ──
+  const otherCtx     = OTHER_SAMPLE_ITEMS.filter(s => s.project === dProject && s.analyte === dAnalyte);
+  const otherByType  = OTHER_TYPES.reduce<Record<string, OtherSampleItem[]>>((acc, { type }) => {
+    acc[type] = otherCtx.filter(o => o.type === type);
+    return acc;
+  }, {});
 
-  function selectProject(v: string) {
-    setBProject(v);
-    setBAnalyte("");
-    setSelectedIds(new Set());
-    setBuiltRows([]);
+  const subjectCount = sheetRows.filter(r => r.type === "Subject").length;
+  const dilutedCount = sheetRows.filter(r => r.type === "Subject" && r.dilution && r.dilution !== "1").length;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  function resetProject(projectId: string) {
+    setDProject(projectId);
+    setSelectedCcSetId(""); setSelectedCcTubeIds(new Set());
+    setSelHqc([]); setSelMqc([]); setSelLqc([]); setSelLloqQc([]);
+    setSelectedOtherIds([]);
+    setSheetRows([]); setSheetBuilt(false); setSheetLocked(false);
   }
 
-  function selectAnalyte(v: string) {
-    setBAnalyte(v);
-    setSelectedIds(new Set());
-    setBuiltRows([]);
+  function handleCcSetSelect(id: string) {
+    setSelectedCcSetId(id);
+    setSheetRows([]); setSheetBuilt(false); setSheetLocked(false);
+    const ccSet = CC_SETS.find(s => s.id === id);
+    if (ccSet) setSelectedCcTubeIds(new Set(ccSet.levels.map(l => l.tubeId)));
+    setSelHqc([]); setSelMqc([]); setSelLqc([]); setSelLloqQc([]);
+    setSelectedOtherIds([]);
   }
 
-  function goToStep2() {
-    if (!bProject || !bAnalyte || !bApsData) return;
-    setSelectedIds(new Set());
-    setSampleFilter("");
-    setStep(2);
+  function toggleQcId(type: "hqc"|"mqc"|"lqc"|"lloqQc", id: string, checked: boolean) {
+    const map = {
+      hqc:    [selHqc,    setSelHqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
+      mqc:    [selMqc,    setSelMqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
+      lqc:    [selLqc,    setSelLqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
+      lloqQc: [selLloqQc, setSelLloqQc] as [string[], React.Dispatch<React.SetStateAction<string[]>>],
+    };
+    const [cur, set] = map[type];
+    set(checked ? [...cur, id] : cur.filter(x => x !== id));
   }
 
-  // ── Step 2 handlers ──
-
-  function goToStep3() {
-    if (selectedIds.size === 0 || !bApsData) return;
-    const chosen = masterFiltered.filter(s => selectedIds.has(s.id));
-    setBuiltRows(buildRunLayout(bApsData, chosen, runNo, qcSets, otherSamples));
-    setStep(3);
+  function toggleOtherId(id: string, checked: boolean) {
+    setSelectedOtherIds(prev => checked ? [...prev, id] : prev.filter(x => x !== id));
   }
 
-  // ── Step 3 handlers ──
+  function buildSheet() {
+    if (!dCcSet || !dProject) return;
+    const qcIds: SelectedQcMap = { hqc: selHqc, mqc: selMqc, lqc: selLqc, lloqQc: selLloqQc };
+    const subjects = MASTERSHEET.filter(s => s.project === dProject && s.analyte === dAnalyte);
+    const rows = buildDistributionSheet(
+      dCcSet, selectedCcTubeIds, qcIds, subjects,
+      selectedOtherIds, QC_SAMPLES, OTHER_SAMPLE_ITEMS, dQcSets,
+    );
+    setSheetRows(rows);
+    setSheetBuilt(true);
+    setSheetLocked(false);
+    setActiveTab("sheet");
+  }
 
-  function submitDS() {
-    if (!bApsData || !bProject_obj) return;
-    const chosen = masterFiltered.filter(s => selectedIds.has(s.id));
-    const id = nextDsId(loadDsRecords(), bProject, bAnalyte, runNo);
+  function updateDilution(idx: number, value: string) {
+    if (sheetLocked) return;
+    setSheetRows(prev => prev.map((r, i) => i === idx ? { ...r, dilution: value } : r));
+  }
+
+  function handleDragStart(e: React.DragEvent, idx: number) {
+    if (sheetLocked) { e.preventDefault(); return; }
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  }
+  function handleDrop(e: React.DragEvent, dropIdx: number) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const next = [...sheetRows];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(dropIdx, 0, moved);
+    setSheetRows(next.map((r, i) => ({ ...r, pos: i + 1 })));
+    setDragIdx(null); setDragOverIdx(null);
+  }
+
+  function saveSheet() {
+    if (!dRunName.trim()) { message.warning("Enter a run / experiment name first"); return; }
+    if (!dCcSet) return;
+    const proj = PROJECTS_LIST.find(p => p.id === dProject);
+    if (!proj) return;
+    const existing = loadDsRecords();
+    const runNo    = nextRunNo(existing, dProject, dAnalyte);
+    const id       = nextDsId(existing, dProject, dAnalyte, runNo);
     const newDs: DSRecord = {
-      id,
-      project: bProject,
-      projectName: bProject_obj.name,
-      analyte: bAnalyte,
-      aps: bApsData.aps,
-      runNo,
-      ccLevels: bApsData.ccLevels,
-      qcSamples: bApsData.qc.length,
-      subjectSamples: chosen.length,
-      totalPositions: builtRows.length,
-      status: "pending",
-      createdBy: "A. Liang",
+      id, project: dProject, projectName: proj.name,
+      analyte: dAnalyte, aps: dCcSet.apsRef, runNo,
+      ccLevels:       sheetRows.filter(r => r.type === "CC").length,
+      qcSamples:      sheetRows.filter(r => r.type === "QC").length,
+      subjectSamples: sheetRows.filter(r => r.type === "Subject").length,
+      totalPositions: sheetRows.length,
+      status: "pending", createdBy: "A. Liang",
       createdAt: new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }),
-      rows: builtRows,
+      runName: dRunName.trim(), locked: sheetLocked, rows: sheetRows,
     };
     addDsRecord(newDs);
-    message.success(`${id} submitted for Project Leader approval`);
+    message.success(`${id} — "${dRunName}" saved and submitted for approval`);
     router.push("/distribution");
   }
 
-  function startOver() {
-    setStep(1);
-    setBProject(projectLocked ? projectFromQuery : ""); setBAnalyte("");
-    setSelectedIds(new Set()); setSampleFilter("");
-    setBuiltRows([]); setSubmitPassword("");
-    setQcSets(1); setOtherSamples({ ...DEFAULT_OTHER_SAMPLES });
+  function exportSheet() {
+    const headers = ["Sr. No.","Sample ID","Sample Name","Subject","Period","Time Pt (h)","Dilution Factor","Type","Nominal Conc (ng/mL)"];
+    const rows = sheetRows.map(r => [
+      String(r.pos), r.id, r.name,
+      r.subject ?? "", r.period ?? "", r.tp ?? "",
+      r.type === "Subject" ? (r.dilution ?? "1") : "",
+      r.type, r.conc ?? "",
+    ]);
+    const csv = [headers, ...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = `${dRunName.trim() || "distribution-sheet"}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    message.success("Exported");
   }
 
-  // ── Mastersheet selection columns ──
+  // ── QC group component ────────────────────────────────────────────────────
+  function QcGroup({ label, options, selected, type }: {
+    label: string; options: QCSample[]; selected: string[]; type: "hqc"|"mqc"|"lqc"|"lloqQc";
+  }) {
+    if (options.length === 0) return null;
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+          color: "var(--text-muted)", marginBottom: 6 }}>{label}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {options.map(q => (
+            <label key={q.id} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
+              borderRadius: 7, cursor: q.status !== "available" ? "not-allowed" : "pointer",
+              background: selected.includes(q.id) ? "var(--accent-light)" : q.status === "depleted" ? "#FAFAFA" : "white",
+              border: `1px solid ${selected.includes(q.id) ? "var(--accent)" : "var(--border)"}`,
+              opacity: q.status !== "available" ? 0.5 : 1, transition: "all 0.12s",
+            }}>
+              <Checkbox checked={selected.includes(q.id)} disabled={q.status !== "available"}
+                onChange={e => toggleQcId(type, q.id, e.target.checked)} />
+              <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--accent)", minWidth: 80 }}>{q.id}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+                {q.remaining > 0 ? `${q.remaining} left` : "depleted"}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-  const masterCols = [
-    {
-      title:"", key:"check", width:36,
-      render:(_:unknown, s:MasterSample) => (
-        <Checkbox
-          checked={selectedIds.has(s.id)}
-          onChange={e => {
-            const next = new Set(selectedIds);
-            e.target.checked ? next.add(s.id) : next.delete(s.id);
-            setSelectedIds(next);
-          }}
-        />
-      ),
+  // ── Table column definitions ──────────────────────────────────────────────
+  const dragCol = {
+    title: "", key: "drag", width: 32,
+    render: () => (
+      <GripVertical size={14} style={{ color: "var(--text-muted)", cursor: sheetLocked ? "not-allowed" : "grab" }} />
+    ),
+  };
+
+  const srNoCol = {
+    title: "Sr. No.", dataIndex: "pos", key: "pos", width: 60,
+    render: (v: number) => <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{v}</span>,
+  };
+
+  const sampleIdCol = {
+    title: "Sample ID", dataIndex: "id", key: "id",
+    render: (v: string) => <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--accent)", fontWeight: 600 }}>{v}</span>,
+  };
+
+  const nameCol = {
+    title: "Sample Name", dataIndex: "name", key: "name",
+    render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span>,
+  };
+
+  const subjPeriodCol = {
+    title: "Subject / Period", key: "subj", width: 120,
+    render: (_: unknown, r: SampleRow) => r.subject
+      ? <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{r.subject} / {r.period ?? "—"}</span>
+      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+  };
+
+  const tpCol = {
+    title: "Time Pt (h)", dataIndex: "tp", key: "tp", width: 90,
+    render: (v: string) => v
+      ? <span style={{ fontFamily: "monospace", fontSize: 12 }}>{v}</span>
+      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+  };
+
+  const dilutionCol = {
+    title: (
+      <Tooltip title="Default = 1 (undiluted). Type a number for diluted samples (e.g. 2, 10). Only applies to Subject samples.">
+        <span style={{ cursor: "help", borderBottom: "1px dashed var(--border)" }}>Dilution Factor</span>
+      </Tooltip>
+    ),
+    key: "dilution", width: 130,
+    render: (_: unknown, r: SampleRow, idx: number) => {
+      if (r.type !== "Subject") return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+      const isDiluted = r.dilution && r.dilution !== "1";
+      return (
+        <Input size="small" value={r.dilution ?? "1"} disabled={sheetLocked}
+          onChange={e => updateDilution(idx, e.target.value)}
+          style={{
+            width: 100, fontSize: 12, textAlign: "center",
+            borderColor:  isDiluted ? "#E65100" : undefined,
+            background:   isDiluted ? "#FFF3E0" : undefined,
+            fontWeight:   isDiluted ? 700 : 400,
+          }} />
+      );
     },
-    {
-      title:"Sample ID", dataIndex:"id", key:"id",
-      render:(v:string) => <span style={{ fontFamily:"monospace", fontSize:10, color:"var(--accent)" }}>{v}</span>,
-    },
-    { title:"Subject", dataIndex:"subject", key:"subject", render:(v:string) => <span style={{ fontFamily:"monospace", fontWeight:600 }}>{v}</span> },
-    { title:"Period",  dataIndex:"period",  key:"period"  },
-    { title:"Time Pt", dataIndex:"tp",      key:"tp",      render:(v:string) => <span style={{ fontFamily:"monospace" }}>{v}</span> },
-    { title:"Freezer", dataIndex:"freezer", key:"freezer", render:(v:string) => <span style={{ fontSize:11, color:"var(--status-info)" }}>{v}</span> },
-    { title:"Location", dataIndex:"location", key:"location", render:(v:string) => <span style={{ fontSize:11, fontFamily:"monospace" }}>{v}</span> },
-    {
-      title:"F/T", dataIndex:"ft", key:"ft",
-      render:(v:number) => (
-        <span style={{ fontSize:12, color: v >= 3 ? "var(--status-fail)" : v >= 2 ? "var(--status-warn)" : "var(--text-secondary)", fontWeight: v >= 2 ? 600 : 400 }}>
-          {v}{v >= 3 ? " ⚠" : ""}
+  };
+
+  const typeCol = {
+    title: "Type", dataIndex: "type", key: "type", width: 100,
+    render: (v: string, r: SampleRow) => {
+      const s = TYPE_COLORS[v] ?? { bg: "var(--bg-card)", color: "var(--text-secondary)" };
+      return (
+        <span style={{ background: s.bg, color: s.color, padding: "2px 8px",
+          borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+          {v}{r.level ? ` ${r.level}` : ""}
         </span>
-      ),
+      );
     },
-  ];
+  };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const concCol = {
+    title: "Nominal Conc. (ng/mL)", dataIndex: "conc", key: "conc",
+    render: (v: string | null) => v
+      ? <span style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 600 }}>{v}</span>
+      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+  };
 
+  const sheetViewCols = [dragCol, srNoCol, sampleIdCol, nameCol, subjPeriodCol, tpCol, dilutionCol];
+  const concViewCols  = [srNoCol, sampleIdCol, nameCol, typeCol, concCol];
+
+  function rowProps(r: SampleRow, idx?: number) {
+    return {
+      draggable: !sheetLocked,
+      onDragStart: (e: React.DragEvent) => handleDragStart(e, idx!),
+      onDragOver:  (e: React.DragEvent) => handleDragOver(e, idx!),
+      onDragEnter: (e: React.DragEvent) => e.preventDefault(),
+      onDrop:      (e: React.DragEvent) => handleDrop(e, idx!),
+      onDragEnd:   () => { setDragIdx(null); setDragOverIdx(null); },
+      style: {
+        cursor:    sheetLocked ? "default" : "grab",
+        opacity:   dragIdx === idx ? 0.3 : 1,
+        borderTop: dragOverIdx === idx && dragIdx !== idx ? "2px solid var(--accent)" : undefined,
+        background:
+          dragOverIdx === idx && dragIdx !== idx ? "var(--accent-light)"
+          : r.type === "QC"  ? "var(--accent-light)"
+          : r.type === "CC"  ? "#f0f5fb"
+          : "transparent",
+        transition: "opacity 0.1s",
+      },
+    };
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout>
-      <div className="page-container">
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
 
-        {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => router.push("/distribution")}
-            className="flex items-center gap-1 mb-3"
-            style={{ fontSize:12, fontWeight:600, color:"var(--text-secondary)", background:"none", border:"none", cursor:"pointer", padding:0 }}
-          >
-            <ArrowLeft size={13} /> Back to Distribution Sheets
-          </button>
-          <h1 className="section-title">New Distribution Sheet</h1>
-          <p className="section-subtitle">
-            Select the project number first, then pull subject samples from the Freezer Room Mastersheet and build the analytical run layout.
-          </p>
-        </div>
-
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-6">
-          {STEPS.map((s, i) => (
-            <div key={s.n} className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: step >= s.n ? "var(--accent)" : "var(--border)",
-                    color: step >= s.n ? "white" : "var(--text-muted)",
-                    fontSize: 11, fontWeight: 700,
-                  }}>
-                  {step > s.n ? <CheckCircle2 size={12} /> : s.n}
-                </div>
-                <span style={{ fontSize: 12, fontWeight: step === s.n ? 600 : 400,
-                  color: step >= s.n ? "var(--text-primary)" : "var(--text-muted)" }}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />}
+        {/* ── Top bar ─────────────────────────────────────────────────────── */}
+        <div style={{
+          padding: "14px 28px", borderBottom: "1px solid var(--border)",
+          background: "white", display: "flex", alignItems: "center", gap: 16, flexShrink: 0,
+        }}>
+          <Button icon={<ArrowLeft size={14} />} onClick={() => router.push("/distribution")}
+            style={{ color: "var(--text-secondary)" }}>
+            Back to Ledger
+          </Button>
+          <div style={{ width: 1, height: 20, background: "var(--border)" }} />
+          <div>
+            <div style={{ fontFamily: "DM Serif Display, serif", fontSize: 20, lineHeight: 1.2 }}>
+              New Sample Distribution Preparation
             </div>
-          ))}
-          {step > 1 && (
-            <button onClick={startOver} className="ml-auto"
-              style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "underline" }}>
-              Start over
-            </button>
-          )}
+            {dProject && dCcSet && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                {dProject} · {dAnalyte} · {dCcSet.id} · APS {dApsData?.aps}
+                {dRunName && <strong style={{ color: "var(--text-primary)", marginLeft: 8 }}>— "{dRunName}"</strong>}
+              </div>
+            )}
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+            {sheetBuilt && (
+              <>
+                <Button icon={<FileDown size={13} />} onClick={exportSheet}
+                  style={{ color: "var(--text-secondary)" }}>
+                  Export CSV
+                </Button>
+                <Button
+                  icon={sheetLocked ? <Unlock size={13} /> : <Lock size={13} />}
+                  onClick={() => setSheetLocked(p => !p)}
+                  style={{
+                    borderColor: sheetLocked ? "var(--status-warn)" : "var(--border)",
+                    color:       sheetLocked ? "var(--status-warn)" : "var(--text-secondary)",
+                    fontWeight:  sheetLocked ? 700 : 400,
+                  }}>
+                  {sheetLocked ? "Unlock Sheet" : "Lock Sheet"}
+                </Button>
+                <Tooltip title={!dRunName.trim() ? "Enter a run name first" : ""}>
+                  <Button type="primary" icon={<CheckCircle2 size={13} />}
+                    disabled={!dRunName.trim() || sheetRows.length === 0}
+                    onClick={saveSheet}>
+                    Save &amp; Submit for Approval
+                  </Button>
+                </Tooltip>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* ── STEP 1: Project & APS ── */}
-        <div className="rounded-xl p-5 mb-5"
-          style={{ background:"white", border:`1px solid ${step === 1 ? "var(--accent)" : "var(--border)"}` }}>
-          <div className="block-label" style={{ marginBottom:14 }}>
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full mr-2 text-white"
-              style={{ background:"var(--accent)", fontSize:10, fontWeight:700 }}>1</span>
-            Select Project &amp; Analyte
-          </div>
+        {/* ── Body: left panel + right sheet ──────────────────────────────── */}
+        <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
 
-          <div className="grid grid-cols-2 gap-5 mb-5">
-            <div>
-              <div className="block-label mb-2">Project Number <span style={{ color:"var(--status-fail)" }}>*</span></div>
-              <Select
-                style={{ width:"100%" }}
-                placeholder="Select project number…"
-                value={bProject || undefined}
-                onChange={selectProject}
-                disabled={step > 1 || projectLocked}
-                size="large"
-              >
+          {/* ── LEFT: Selection panel ──────────────────────────────────────── */}
+          <div style={{
+            width: 320, flexShrink: 0, overflowY: "auto",
+            padding: "20px 18px", borderRight: "1px solid var(--border)",
+            background: "var(--bg-card)", display: "flex", flexDirection: "column", gap: 22,
+          }}>
+
+            {/* Step 1 — Project */}
+            <section>
+              <div className="step-label">1 · Project</div>
+              <Select style={{ width: "100%" }} placeholder="Select project…"
+                value={dProject || undefined} onChange={resetProject}>
                 {PROJECTS_LIST.map(p => (
                   <Option key={p.id} value={p.id}>
-                    <span style={{ fontFamily:"monospace", fontWeight:600, color:"var(--accent)" }}>{p.id}</span>
-                    <span style={{ color:"var(--text-muted)", marginLeft:8, fontSize:12 }}>— {p.name}</span>
+                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "var(--accent)", fontSize: 12 }}>{p.id}</span>
+                    <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: 11 }}>— {p.name}</span>
                   </Option>
                 ))}
               </Select>
-            </div>
-            <div>
-              <div className="block-label mb-2">Analyte <span style={{ color:"var(--status-fail)" }}>*</span></div>
-              <Select
-                style={{ width:"100%" }}
-                placeholder={bProject ? "Select analyte…" : "Select a project number first"}
-                value={bAnalyte || undefined}
-                onChange={selectAnalyte}
-                disabled={!bProject || step > 1}
-                size="large"
-              >
-                {(bProject_obj?.analytes ?? []).map(a => (
-                  <Option key={a} value={a}>
-                    <span style={{ fontFamily:"monospace", fontWeight:700 }}>{a}</span>
-                  </Option>
-                ))}
-              </Select>
-            </div>
-          </div>
+            </section>
 
-          {/* APS info panel */}
-          {bApsData && (
-            <div className="rounded-xl p-5 mb-5" style={{ background:"var(--accent-light)", border:"1px solid #c2d4b8" }}>
-              <div className="block-label mb-3">APS Details — auto-populated</div>
-              <div className="grid grid-cols-4 gap-4 mb-4">
-                {[
-                  { label:"APS No.",    value:bApsData.aps },
-                  { label:"LLOQ",       value:`${bApsData.lloq} ng/mL` },
-                  { label:"ULOQ",       value:`${bApsData.uloq} ng/mL` },
-                  { label:"CC Levels",  value:String(bApsData.ccLevels) },
-                ].map(f => (
-                  <div key={f.label}>
-                    <div style={{ fontSize:9, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--accent)", marginBottom:3 }}>{f.label}</div>
-                    <div style={{ fontFamily:"monospace", fontWeight:700, fontSize:13, color:"var(--text-primary)" }}>{f.value}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div style={{ fontSize:9, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--accent)", marginBottom:6 }}>CC Concentrations (ng/mL)</div>
-                  <div className="flex flex-wrap gap-1">
-                    {bApsData.ccConcs.map((c,i) => (
-                      <span key={i} style={{ fontFamily:"monospace", fontSize:11, fontWeight:600, background:"white", border:"1px solid var(--accent)", borderRadius:4, padding:"1px 6px", color:"var(--accent)" }}>{c}</span>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize:9, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--accent)", marginBottom:6 }}>QC Set</div>
-                  <div className="flex flex-wrap gap-2">
-                    {bApsData.qc.map(q => (
-                      <span key={q.name} style={{ fontSize:11, background:"white", border:"1px solid var(--accent)", borderRadius:4, padding:"1px 8px", color:"var(--accent)" }}>
-                        <strong>{q.name}</strong> {q.conc} ng/mL
+            {/* Step 2 — CC Set */}
+            <section>
+              <div className="step-label">2 · CC Set Number</div>
+              <Select style={{ width: "100%" }} placeholder={dProject ? "Select CC set…" : "Select project first"}
+                value={selectedCcSetId || undefined} onChange={handleCcSetSelect} disabled={!dProject}>
+                {ccSetsForProject.map(s => (
+                  <Option key={s.id} value={s.id} disabled={s.status !== "active"}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12,
+                        color: s.status === "active" ? "var(--accent)" : "var(--text-muted)" }}>
+                        {s.id}
                       </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background:"white", border:"1px solid var(--accent)", width:"fit-content" }}>
-                <FlaskConical size={12} style={{ color:"var(--accent)" }} />
-                <span style={{ fontSize:12, color:"var(--accent)", fontWeight:600 }}>
-                  Run #{runNo} — next available for {bProject} / {bAnalyte}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Run Composition — QC sets + other samples */}
-          {bApsData && step === 1 && (
-            <div className="rounded-xl p-5 mb-5" style={{ background:"white", border:"1px solid var(--border)" }}>
-              <div className="block-label mb-3">Run Composition</div>
-              <div className="grid grid-cols-2 gap-5 mb-4">
-                <div>
-                  <div className="block-label mb-2">Number of QC Sets</div>
-                  <InputNumber
-                    min={1} max={5} value={qcSets}
-                    onChange={v => setQcSets(v ?? 1)}
-                    style={{ width:"100%" }} size="large"
-                  />
-                  <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:4 }}>
-                    HQC, LLOQ QC, interspersed MQC and the closing LQC anchor are repeated for each QC set, with subject samples divided across sets.
-                  </div>
-                </div>
-              </div>
-              <div className="block-label mb-2">
-                Other Samples
-                <span style={{ fontSize:11, fontWeight:400, color:"var(--text-muted)", marginLeft:6 }}>
-                  — appended to the end of the run layout
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                {OTHER_SAMPLE_OPTIONS.map(o => (
-                  <Checkbox
-                    key={o.key}
-                    checked={otherSamples[o.key]}
-                    onChange={e => setOtherSamples(prev => ({ ...prev, [o.key]: e.target.checked }))}
-                  >
-                    {o.label}
-                  </Checkbox>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                        {s.analyte} · {s.prepDate}
+                      </span>
+                      {s.status !== "active" && (
+                        <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700,
+                          background: "#FDECEA", color: "#B71C1C", padding: "1px 5px", borderRadius: 4 }}>
+                          {s.status}
+                        </span>
+                      )}
+                    </div>
+                  </Option>
                 ))}
-              </div>
-            </div>
-          )}
+              </Select>
 
-          {step === 1 && (
-            <div className="flex justify-end">
-              <Button type="primary" icon={<ArrowRight size={13} />}
-                disabled={!bProject || !bAnalyte || !bApsData}
-                onClick={goToStep2}>
-                Select Samples from Mastersheet
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* ── STEP 2: Sample selection ── */}
-        {step >= 2 && (
-          <div className="rounded-xl p-5 mb-5"
-            style={{ background:"white", border:`1px solid ${step === 2 ? "var(--accent)" : "var(--border)"}` }}>
-            <div className="block-label" style={{ marginBottom:14 }}>
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full mr-2 text-white"
-                style={{ background:"var(--accent)", fontSize:10, fontWeight:700 }}>2</span>
-              Select Samples from Mastersheet
-            </div>
-
-            {/* Mastersheet header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                  style={{ background:"var(--bg-card)", border:"1px solid var(--border)" }}>
-                  <Snowflake size={13} style={{ color:"var(--status-info)" }} />
-                  <span style={{ fontSize:12, fontWeight:600, color:"var(--text-primary)" }}>Freezer Room Mastersheet</span>
-                  <ChevronRight size={11} style={{ color:"var(--text-muted)" }} />
-                  <span style={{ fontFamily:"monospace", fontSize:11, color:"var(--accent)" }}>{bProject}</span>
-                  <span style={{ fontFamily:"monospace", fontSize:11, fontWeight:700, color:"var(--accent)" }}>/ {bAnalyte}</span>
-                </div>
-                <span style={{ fontSize:11, color:"var(--text-muted)" }}>
-                  {masterFiltered.length} available · {selectedIds.size} selected
-                </span>
-              </div>
-              {step === 2 && (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Filter by subject / time point…"
-                    value={sampleFilter}
-                    onChange={e => setSampleFilter(e.target.value)}
-                    style={{ width:240 }}
-                    size="small"
-                  />
-                  <button
-                    onClick={() => setSelectedIds(new Set(masterFiltered.map(s => s.id)))}
-                    style={{ fontSize:11, fontWeight:600, color:"var(--accent)", background:"var(--accent-light)", border:"1px solid var(--accent)", borderRadius:6, padding:"3px 10px", cursor:"pointer" }}>
-                    Select All
-                  </button>
-                  <button
-                    onClick={() => setSelectedIds(new Set())}
-                    style={{ fontSize:11, fontWeight:600, color:"var(--status-fail)", background:"var(--status-fail-bg)", border:"1px solid var(--status-fail)", borderRadius:6, padding:"3px 10px", cursor:"pointer" }}>
-                    Clear
-                  </button>
+              {dCcSet && (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>
+                    Levels in {dCcSet.id} — uncheck to exclude
+                  </div>
+                  {dCcSet.levels.map(lvl => (
+                    <label key={lvl.tubeId} style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
+                      borderRadius: 6, cursor: "pointer",
+                      background: selectedCcTubeIds.has(lvl.tubeId) ? "white" : "transparent",
+                      border: `1px solid ${selectedCcTubeIds.has(lvl.tubeId) ? "var(--accent)" : "var(--border)"}`,
+                      transition: "all 0.1s",
+                    }}>
+                      <Checkbox checked={selectedCcTubeIds.has(lvl.tubeId)}
+                        onChange={e => {
+                          const next = new Set(selectedCcTubeIds);
+                          e.target.checked ? next.add(lvl.tubeId) : next.delete(lvl.tubeId);
+                          setSelectedCcTubeIds(next);
+                        }} />
+                      <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "var(--accent)", minWidth: 28 }}>{lvl.level}</span>
+                      <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{lvl.tubeId}</span>
+                      <span style={{ fontSize: 10, color: "var(--text-secondary)", marginLeft: "auto" }}>{lvl.conc} {lvl.unit}</span>
+                    </label>
+                  ))}
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                    {selectedCcTubeIds.size} / {dCcSet.levels.length} levels selected
+                  </div>
+                  {dApsData && (
+                    <div style={{ marginTop: 4, padding: "6px 10px", borderRadius: 6,
+                      background: "var(--accent-light)", border: "1px solid #c2d4b8", fontSize: 11, color: "var(--accent)" }}>
+                      APS {dApsData.aps} · LLOQ {dApsData.lloq} – ULOQ {dApsData.uloq} ng/mL
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </section>
 
-            {masterFiltered.length === 0 ? (
-              <div className="flex flex-col items-center py-10 rounded-xl"
-                style={{ border:"1px dashed var(--border)", color:"var(--text-muted)" }}>
-                <PackageSearch size={28} style={{ marginBottom:8 }} />
-                <span style={{ fontSize:13 }}>No available samples in Mastersheet for {bProject} / {bAnalyte}</span>
+            {/* Step 3 — QC Sample IDs */}
+            {dCcSet && (
+              <section>
+                <div className="step-label">3 · QC Sample IDs</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                  Select the specific QC batch IDs for this run. For fast/fasted studies, pick separate IDs per condition.
+                </div>
+                <QcGroup label="HQC"     options={hqcOptions}    selected={selHqc}    type="hqc"    />
+                <QcGroup label="MQC"     options={mqcOptions}    selected={selMqc}    type="mqc"    />
+                <QcGroup label="LQC"     options={lqcOptions}    selected={selLqc}    type="lqc"    />
+                <QcGroup label="LLOQ QC" options={lloqQcOptions} selected={selLloqQc} type="lloqQc" />
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>QC Sets</span>
+                  <InputNumber min={1} max={5} value={dQcSets} onChange={v => setDQcSets(v ?? 1)}
+                    style={{ width: 64 }} size="small" />
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>blocks per run</span>
+                </div>
+              </section>
+            )}
+
+            {/* Step 4 — Other Samples */}
+            {dCcSet && (
+              <section>
+                <div className="step-label">4 · Other Samples</div>
+                {OTHER_TYPES.map(({ type, label }) => {
+                  const items = otherByType[type] ?? [];
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={type} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>{label}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {items.map(item => (
+                          <label key={item.id} style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            padding: "5px 8px", borderRadius: 6, cursor: "pointer",
+                            background: selectedOtherIds.includes(item.id) ? "#F0EBF5" : "white",
+                            border: `1px solid ${selectedOtherIds.includes(item.id) ? "#9B72C4" : "var(--border)"}`,
+                            transition: "all 0.1s",
+                          }}>
+                            <Checkbox checked={selectedOtherIds.includes(item.id)}
+                              onChange={e => toggleOtherId(item.id, e.target.checked)} />
+                            <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "#6B4E8A" }}>{item.id}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+            )}
+
+            {/* Step 5 — Run name */}
+            <section>
+              <div className="step-label">5 · Run / Experiment Name</div>
+              <Input placeholder="e.g. Run-12 MET Fasted P1…"
+                value={dRunName} onChange={e => setDRunName(e.target.value)}
+                style={{ borderColor: dRunName ? "var(--accent)" : undefined }} />
+            </section>
+
+            {/* Build button */}
+            <Button type="primary" size="large" block
+              icon={<FlaskConical size={15} />}
+              disabled={!dCcSet || selectedCcTubeIds.size === 0}
+              onClick={buildSheet}>
+              {sheetBuilt ? "Rebuild Sheet" : "Build Sheet"}
+            </Button>
+          </div>
+
+          {/* ── RIGHT: Sheet area ──────────────────────────────────────────── */}
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", background: "white" }}>
+
+            {!sheetBuilt ? (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", color: "var(--text-muted)" }}>
+                <FlaskConical size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No sheet built yet</div>
+                <div style={{ fontSize: 13, maxWidth: 340, textAlign: "center", lineHeight: 1.6 }}>
+                  Select a project and CC Set on the left, choose QC IDs and other samples,
+                  then click <strong>Build Sheet</strong>.
+                </div>
               </div>
             ) : (
-              <div className="rounded-xl overflow-hidden mb-4" style={{ border:"1px solid var(--border)", background:"white" }}>
-                <Table
-                  dataSource={masterFiltered}
-                  columns={masterCols}
-                  rowKey="id"
-                  size="small"
-                  pagination={{ pageSize:8, showSizeChanger:false }}
-                  onRow={(r) => ({
-                    onClick:() => {
-                      if (step !== 2) return;
-                      const next = new Set(selectedIds);
-                      selectedIds.has(r.id) ? next.delete(r.id) : next.add(r.id);
-                      setSelectedIds(next);
-                    },
-                    style:{ cursor: step === 2 ? "pointer" : "default", background: selectedIds.has(r.id) ? "var(--accent-light)" : "transparent" },
-                  })}
-                />
-              </div>
-            )}
-
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg mb-4"
-                style={{ background:"var(--accent-light)", border:"1px solid var(--accent)" }}>
-                <CheckCircle2 size={13} style={{ color:"var(--accent)" }} />
-                <span style={{ fontSize:12, fontWeight:600, color:"var(--accent)" }}>
-                  {selectedIds.size} subject sample{selectedIds.size !== 1 ? "s" : ""} selected for this run
-                </span>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="flex justify-between gap-2">
-                <Button onClick={() => setStep(1)}>← Back</Button>
-                <Button type="primary" icon={<ArrowRight size={13} />}
-                  disabled={selectedIds.size === 0}
-                  onClick={goToStep3}>
-                  Build Run Layout
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── STEP 3: Review + Submit ── */}
-        {step === 3 && (
-          <div className="rounded-xl p-5 mb-5" style={{ background:"white", border:"1px solid var(--accent)" }}>
-            <div className="block-label" style={{ marginBottom:14 }}>
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full mr-2 text-white"
-                style={{ background:"var(--accent)", fontSize:10, fontWeight:700 }}>3</span>
-              Review &amp; Submit
-            </div>
-
-            {/* APS info bar */}
-            <div className="flex items-center gap-4 rounded-xl px-4 py-3 mb-5"
-              style={{ background:"var(--accent-light)", border:"1px solid #c2d4b8" }}>
-              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:"var(--accent)" }} />
-              <span style={{ fontSize:12, color:"var(--accent)", fontWeight:500 }}>
-                {bProject} · {bAnalyte} · Run #{runNo} · APS {bApsData?.aps} · CC {bApsData?.lloq}–{bApsData?.uloq} ng/mL · {bApsData?.ccLevels} levels
-              </span>
-              <span style={{ fontSize:11, color:"var(--accent)", opacity:0.7, marginLeft:"auto" }}>
-                LLOQ: {bApsData?.lloq} · ULOQ: {bApsData?.uloq} ng/mL
-              </span>
-            </div>
-
-            {/* Run summary chips */}
-            <div className="flex gap-3 mb-4">
-              {[
-                { label:"CC Levels",       value:builtRows.filter(r=>r.type==="CC").length,           color:"#3A6B9B" },
-                { label:"QC Samples",      value:builtRows.filter(r=>r.type==="QC").length,           color:"var(--accent)" },
-                { label:"Subject Samples", value:builtRows.filter(r=>r.type==="Subject").length,      color:"var(--text-primary)" },
-                { label:"Other Samples",   value:builtRows.filter(r=>["SES","SP","BLK/BLK","LLOQ","ULOQ"].includes(r.type)).length, color:"#6B4E8A" },
-                { label:"Total Positions", value:builtRows.length,                                    color:"var(--text-secondary)" },
-              ].map(s => (
-                <div key={s.label} className="flex items-center gap-2 rounded-lg px-4 py-2"
-                  style={{ background:"var(--bg-card)", border:"1px solid var(--border)" }}>
-                  <span style={{ fontSize:18, fontWeight:700, fontFamily:"DM Serif Display, serif", color:s.color }}>{s.value}</span>
-                  <span style={{ fontSize:11, color:"var(--text-secondary)" }}>{s.label}</span>
+              <>
+                {/* Summary strip */}
+                <div style={{
+                  padding: "10px 24px", borderBottom: "1px solid var(--border)",
+                  background: "var(--bg-card)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                }}>
+                  {[
+                    { label:"CC",       v:sheetRows.filter(r=>r.type==="CC").length,      color:"#3A6B9B",              bg:"#E8F0FB"            },
+                    { label:"QC",       v:sheetRows.filter(r=>r.type==="QC").length,      color:"var(--accent)",        bg:"var(--accent-light)"},
+                    { label:"Subjects", v:subjectCount,                                    color:"var(--text-primary)",  bg:"var(--bg-card)"     },
+                    { label:"Other",    v:sheetRows.filter(r=>!["CC","QC","Subject"].includes(r.type)).length, color:"#6B4E8A", bg:"#F0EBF5" },
+                    { label:"Total",    v:sheetRows.length,                                color:"var(--text-secondary)",bg:"var(--bg-card)"     },
+                  ].map(s => (
+                    <div key={s.label} style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "5px 12px", borderRadius: 8, background: s.bg,
+                    }}>
+                      <span style={{ fontSize: 18, fontWeight: 700, fontFamily: "DM Serif Display, serif", color: s.color }}>{s.v}</span>
+                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{s.label}</span>
+                    </div>
+                  ))}
+                  {subjectCount > 0 && (
+                    <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-secondary)" }}>
+                      <span style={{ color: "#E65100", fontWeight: 600 }}>{dilutedCount} diluted</span>
+                      {" · "}
+                      <span>{subjectCount - dilutedCount} undiluted (DF=1)</span>
+                    </div>
+                  )}
+                  {sheetLocked && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px",
+                      borderRadius: 20, background: "#FFF8E1", border: "1px solid #FFD54F" }}>
+                      <Lock size={12} style={{ color: "#F57F17" }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#F57F17" }}>SHEET LOCKED</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-              <div className="flex items-center gap-2 rounded-lg px-4 py-2 ml-auto"
-                style={{ background:"var(--status-pass-bg)", border:"1px solid #a0cbb0" }}>
-                <span style={{ fontSize:11, color:"var(--status-pass)", fontWeight:600 }}>
-                  ✓ FDA BMV: QC ≥ 5% of total — compliant
-                </span>
-              </div>
-            </div>
 
-            {/* Run layout table */}
-            <div className="rounded-xl overflow-hidden mb-5" style={{ border:"1px solid var(--border)", background:"white" }}>
-              <Table
-                dataSource={builtRows}
-                columns={runCols}
-                rowKey="pos"
-                size="small"
-                pagination={false}
-                scroll={{ y:360 }}
-                onRow={(r) => ({
-                  style:{ background: r.type === "Subject" ? "transparent" : r.type === "QC" ? "var(--accent-light)" : r.type === "CC" ? "#f0f5fb" : "transparent" }
-                })}
-              />
-            </div>
-
-            {/* E-signature */}
-            <div className="rounded-xl p-4 mb-4" style={{ background:"var(--bg-card)", border:"1px solid var(--border)" }}>
-              <div className="block-label mb-2">E-Signature (Analyst)</div>
-              <Input.Password
-                placeholder="Enter password to submit for Project Leader approval…"
-                value={submitPassword}
-                onChange={e => setSubmitPassword(e.target.value)}
-                style={{ maxWidth:400 }}
-              />
-              <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:4 }}>
-                Meaning: &ldquo;I confirm this Distribution Sheet is complete and ready for Project Leader review.&rdquo;
-              </div>
-            </div>
-
-            <div className="flex justify-between gap-2">
-              <Button onClick={() => setStep(2)}>← Back</Button>
-              <div className="flex gap-2">
-                <Button icon={<Download size={13} />}
-                  style={{ color:"var(--text-secondary)" }}>
-                  Export SS Loading Sheet
-                </Button>
-                <Button type="primary" icon={<Send size={13} />}
-                  disabled={!submitPassword}
-                  onClick={submitDS}>
-                  Submit for Approval
-                </Button>
-              </div>
-            </div>
+                {/* Tabs */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "0 24px" }}>
+                  <Tabs activeKey={activeTab} onChange={setActiveTab}
+                    items={[
+                      {
+                        key: "sheet",
+                        label: "Distribution Sheet (Print View)",
+                        children: (
+                          <div>
+                            {!sheetLocked && (
+                              <div style={{
+                                display: "flex", alignItems: "center", gap: 8,
+                                padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+                                background: "#FFFDE7", border: "1px solid #FFF176", fontSize: 12, color: "#7A6A00",
+                              }}>
+                                <GripVertical size={13} />
+                                Drag rows to reorder · Dilution Factor defaults to <strong style={{ margin: "0 2px" }}>1</strong> — change for diluted samples
+                              </div>
+                            )}
+                            <Table
+                              dataSource={sheetRows} columns={sheetViewCols}
+                              rowKey="pos" size="middle" pagination={false}
+                              scroll={{ y: "calc(100vh - 360px)" }}
+                              onRow={(r, idx) => rowProps(r, idx)}
+                            />
+                          </div>
+                        ),
+                      },
+                      {
+                        key: "conc",
+                        label: "Concentrations (Back-end View)",
+                        children: (
+                          <Table
+                            dataSource={sheetRows} columns={concViewCols}
+                            rowKey="pos" size="middle" pagination={false}
+                            scroll={{ y: "calc(100vh - 340px)" }}
+                            onRow={(r) => ({
+                              style: {
+                                background: r.type === "QC" ? "var(--accent-light)"
+                                  : r.type === "CC" ? "#f0f5fb" : "transparent",
+                              },
+                            })}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
           </div>
-        )}
-
+        </div>
       </div>
-    </AppLayout>
-  );
-}
 
-export default function NewDistributionSheetPage() {
-  return (
-    <Suspense fallback={null}>
-      <NewDistributionSheetForm />
-    </Suspense>
+      <style>{`
+        .step-label {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          margin-bottom: 8px;
+        }
+      `}</style>
+    </AppLayout>
   );
 }

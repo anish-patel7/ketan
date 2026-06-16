@@ -39,8 +39,7 @@ export default function DistributionPage() {
   const [selectedProject, setSelectedProject] = useState<string | undefined>();
 
   // filters
-  const [filterStatus,  setFilterStatus]  = useState<string | undefined>();
-  const [filterAnalyte, setFilterAnalyte] = useState<string | undefined>();
+  const [filterStatus, setFilterStatus] = useState<string | undefined>();
 
   // modals
   const [detailDs,    setDetailDs]    = useState<DSRecord | null>(null);
@@ -71,9 +70,8 @@ export default function DistributionPage() {
 
   const ledgerFiltered = records.filter(r => {
     const mP = r.project === selectedProject;
-    const mS = !filterStatus  || r.status  === filterStatus;
-    const mA = !filterAnalyte || r.analyte === filterAnalyte;
-    return mP && mS && mA;
+    const mS = !filterStatus || r.status === filterStatus;
+    return mP && mS;
   });
 
   const projectRecords = records.filter(r => r.project === selectedProject);
@@ -84,9 +82,7 @@ export default function DistributionPage() {
     retrieved: projectRecords.filter(r => r.status === "retrieved").length,
   };
 
-  const analyteOptions = PROJECTS_LIST.find(p => p.id === selectedProject)?.analytes ?? [];
-
-  const dApsData     = dProject && dAnalyte ? PROJECT_APS[dProject]?.[dAnalyte] : undefined;
+const dApsData     = dProject && dAnalyte ? PROJECT_APS[dProject]?.[dAnalyte] : undefined;
   const ccTubesStock = dProject && dAnalyte ? (CC_FREEZER_STOCK[dProject]?.[dAnalyte] ?? 0) : 0;
   const ccAvailSets  = dApsData ? Math.floor(ccTubesStock / dApsData.ccLevels) : 0;
 
@@ -464,7 +460,7 @@ export default function DistributionPage() {
             style={{ width:360 }} size="large"
             placeholder="Select a project number to view its Distribution Sheets…"
             value={selectedProject} allowClear
-            onChange={(v) => { setSelectedProject(v); setFilterAnalyte(undefined); setFilterStatus(undefined); }}
+            onChange={(v) => { setSelectedProject(v); setFilterStatus(undefined); }}
           >
             {PROJECTS_LIST.map(p => (
               <Option key={p.id} value={p.id}>
@@ -500,15 +496,12 @@ export default function DistributionPage() {
                 ))}
               </div>
               <Button type="primary" icon={<Plus size={14} />} onClick={openDrawer}>
-                New Distribution / Sample Distribution Preparation
+                New Sample Distribution Preparation
               </Button>
             </div>
 
             {/* Filters */}
             <div className="flex gap-3 mb-4">
-              <Select placeholder="Analyte" style={{ width:130 }} allowClear value={filterAnalyte} onChange={setFilterAnalyte}>
-                {analyteOptions.map(a => <Option key={a} value={a}>{a}</Option>)}
-              </Select>
               <Select placeholder="Status" style={{ width:160 }} allowClear value={filterStatus} onChange={setFilterStatus}>
                 <Option value="draft">Draft</Option>
                 <Option value="pending">Pending</Option>
@@ -540,7 +533,7 @@ export default function DistributionPage() {
           title={
             <div>
               <div style={{ fontFamily:"DM Serif Display, serif", fontSize:18 }}>
-                New Distribution / Sample Distribution Preparation
+                New Sample Distribution Preparation
               </div>
               <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:2, fontFamily:"inherit", fontWeight:400 }}>
                 Select project &amp; CCQC → review calibration sets in freezer → build sheet → add dilution factors → lock &amp; save

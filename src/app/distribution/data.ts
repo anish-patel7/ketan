@@ -8,7 +8,9 @@ export type SampleRow = {
   level?: string;
   conc: string | null;
   subject?: string;
+  period?: string;
   tp?: string;
+  dilution?: string;
 };
 
 // "Other samples" — appended to the end of the run layout, one row each when selected
@@ -41,6 +43,8 @@ export type DSRecord = {
   approvedBy?: string;
   approvedAt?: string;
   retrievalReqId?: string;
+  runName?: string;
+  locked?: boolean;
   rows?: SampleRow[];
 };
 
@@ -62,6 +66,13 @@ export type ApsEntry = {
 };
 
 // ── Project / APS master data ───────────────────────────────────────────────
+
+// CC calibrator tubes currently in the Freezer Room (mock stock)
+export const CC_FREEZER_STOCK: Record<string, Record<string, number>> = {
+  "SID-2026-001": { "MET": 24, "MET-G": 16 },
+  "SID-2026-002": { "AML": 8 },
+  "SID-2026-003": { "ATR": 0 },
+};
 
 export const PROJECTS_LIST = [
   { id: "SID-2026-001", name: "Metformin BE Study",    analytes: ["MET", "MET-G"] },
@@ -203,7 +214,7 @@ export function buildRunLayout(
     if (lloqQc) rows.push({ pos: pos++, id:`QC-LLOQQC-${suffix}`, name:`LLOQ QC (set ${set + 1})`, type:"QC", level:"LLOQ QC", conc:`${lloqQc.conc} ng/mL` });
 
     chunk.forEach((s, i) => {
-      rows.push({ pos: pos++, id:s.id, name:`Subject ${s.subject} / ${s.period} / ${s.tp}`, type:"Subject", subject:s.subject, tp:s.tp, conc:null });
+      rows.push({ pos: pos++, id:s.id, name:`Subject ${s.subject} / ${s.period} / ${s.tp}`, type:"Subject", subject:s.subject, period:s.period, tp:s.tp, conc:null });
       if (mqc && (i + 1) % 6 === 0 && i < chunk.length - 1) {
         rows.push({ pos: pos++, id:`QC-MQC-${suffix}-${i + 1}`, name:`MQC (set ${set + 1}, interspersed)`, type:"QC", level:"MQC", conc:`${mqc.conc} ng/mL` });
       }

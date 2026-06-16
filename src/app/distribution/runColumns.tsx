@@ -35,6 +35,18 @@ export const runCols = [
     },
   },
   {
+    title:"Subj / Period", key:"subj",
+    render:(_:unknown, r:SampleRow) => r.subject
+      ? <span style={{ fontFamily:"monospace", fontSize:11, fontWeight:600 }}>{r.subject} / {r.period ?? "—"}</span>
+      : <span style={{ color:"var(--text-muted)", fontSize:11 }}>—</span>,
+  },
+  {
+    title:"Time Pt (h)", dataIndex:"tp", key:"tp",
+    render:(v:string) => v
+      ? <span style={{ fontFamily:"monospace", fontSize:11 }}>{v}</span>
+      : <span style={{ color:"var(--text-muted)", fontSize:11 }}>—</span>,
+  },
+  {
     title:(
       <span className="flex items-center gap-1">
         Nominal Conc.
@@ -47,5 +59,18 @@ export const runCols = [
     render:(v:string|null) => v
       ? <span style={{ fontFamily:"monospace", fontSize:12, fontWeight:500 }}>{v}</span>
       : <span style={{ color:"var(--text-muted)", fontSize:11 }}>—</span>,
+  },
+  {
+    title:"Dilution Factor", dataIndex:"dilution", key:"dilution",
+    render:(v:string|undefined, r:SampleRow) => {
+      if (r.type !== "Subject") return <span style={{ color:"var(--text-muted)", fontSize:11 }}>—</span>;
+      if (!v || !v.trim()) return <span style={{ fontSize:11, color:"var(--text-secondary)" }}>Undiluted</span>;
+      return (
+        <span style={{ fontFamily:"monospace", fontSize:11, fontWeight:600,
+          background:"#FFF3E0", color:"#E65100", padding:"1px 6px", borderRadius:4 }}>
+          {v}
+        </span>
+      );
+    },
   },
 ];

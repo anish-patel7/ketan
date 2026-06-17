@@ -12,10 +12,11 @@ import {
   Snowflake, PackageSearch,
 } from "lucide-react";
 import {
-  PROJECTS_LIST, MASTERSHEET,
+  PROJECTS_LIST,
   type DSRecord, type SampleRow,
   loadDsRecords, persistDsRecords,
 } from "./data";
+import { getApprovedSamples } from "../freezer/mastersheet";
 import { runCols } from "./runColumns";
 
 const { Option } = Select;
@@ -47,11 +48,11 @@ export default function DistributionPage() {
     retrieved: projectRecords.filter(r => r.status === "retrieved").length,
   };
 
-  const retrievalSamples = useMemo(() => {
+  type RetSample = { id: string; subject?: string; tp?: string; freezer?: string; location?: string };
+  const retrievalSamples = useMemo<RetSample[]>(() => {
     if (!retrievalDs) return [];
     if (retrievalDs.rows) return retrievalDs.rows.filter(r => r.type === "Subject");
-    return MASTERSHEET
-      .filter(s => s.project === retrievalDs.project && s.analyte === retrievalDs.analyte)
+    return getApprovedSamples(retrievalDs.project, retrievalDs.analyte)
       .slice(0, retrievalDs.subjectSamples);
   }, [retrievalDs]);
 
@@ -433,21 +434,18 @@ export default function DistributionPage() {
                       textTransform:"uppercase", color:"var(--text-muted)" }}>{h}</span>
                   ))}
                 </div>
-                {retrievalSamples.map((r, i) => {
-                  const ms = MASTERSHEET.find(m => m.id === r.id);
-                  return (
-                    <div key={r.id} className="grid items-center px-3 py-2"
-                      style={{ gridTemplateColumns:"1fr 60px 60px 90px 80px", gap:8,
-                        borderBottom: i < retrievalSamples.length-1 ? "1px solid var(--border)" : "none",
-                        background:"white" }}>
-                      <span style={{ fontSize:10, fontFamily:"monospace", color:"var(--accent)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.id}</span>
-                      <span style={{ fontSize:11, fontWeight:600 }}>{r.subject ?? ms?.subject ?? "—"}</span>
-                      <span style={{ fontSize:11, fontFamily:"monospace" }}>{r.tp ?? ms?.tp ?? "—"}</span>
-                      <span style={{ fontSize:11, color:"var(--status-info)", fontFamily:"monospace" }}>{ms?.freezer ?? "—"}</span>
-                      <span style={{ fontSize:10, fontFamily:"monospace" }}>{ms?.location ?? "—"}</span>
-                    </div>
-                  );
-                })}
+                {retrievalSamples.map((r, i) => (
+                  <div key={r.id} className="grid items-center px-3 py-2"
+                    style={{ gridTemplateColumns:"1fr 60px 60px 90px 80px", gap:8,
+                      borderBottom: i < retrievalSamples.length-1 ? "1px solid var(--border)" : "none",
+                      background:"white" }}>
+                    <span style={{ fontSize:10, fontFamily:"monospace", color:"var(--accent)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.id}</span>
+                    <span style={{ fontSize:11, fontWeight:600 }}>{r.subject ?? "—"}</span>
+                    <span style={{ fontSize:11, fontFamily:"monospace" }}>{r.tp ?? "—"}</span>
+                    <span style={{ fontSize:11, color:"var(--status-info)", fontFamily:"monospace" }}>{r.freezer ?? "—"}</span>
+                    <span style={{ fontSize:10, fontFamily:"monospace" }}>{r.location ?? "—"}</span>
+                  </div>
+                ))}
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">

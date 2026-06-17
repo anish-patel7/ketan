@@ -7,6 +7,7 @@ export const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   "QC":      { bg:"var(--accent-light)", color:"var(--accent)" },
   "SES":     { bg:"#F0EBF5", color:"#6B4E8A" },
   "SP":      { bg:"#F5EBF0", color:"#8A4E6B" },
+  "BLK":     { bg:"#EFEDE8", color:"#7A746C" },
   "BLK/BLK": { bg:"#ECEAE5", color:"#6B6560" },
   "LLOQ":    { bg:"#E8F5F0", color:"#2E8A6B" },
   "ULOQ":    { bg:"#FBEEE0", color:"#B8702A" },

@@ -20,6 +20,10 @@ const STATUS_MAP: Record<string, { bg: string; color: string; label?: string }> 
   retrieved:   { bg: "var(--status-warn-bg)",  color: "var(--status-warn)" },
   "in use":    { bg: "var(--status-warn-bg)",  color: "var(--status-warn)" },
   discarded:   { bg: "var(--bg-card)",          color: "var(--text-muted)" },
+  missing:     { bg: "#F5F5F5",                color: "#9E9E9E" },
+  draft:       { bg: "var(--bg-card)",          color: "var(--text-secondary)" },
+  submitted:   { bg: "var(--status-info-bg)",  color: "var(--status-info)" },
+  "qa-review": { bg: "var(--status-warn-bg)",  color: "var(--status-warn)" },
 };
 
 export default function StatusTag({ status }: { status: string }) {

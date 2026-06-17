@@ -4,7 +4,7 @@ export type SampleRow = {
   pos: number;
   id: string;
   name: string;
-  type: "CC" | "QC" | "SES" | "SP" | "BLK/BLK" | "LLOQ" | "ULOQ" | "Subject" | "Pooled Plasma" | "Matrix Lot";
+  type: "CC" | "QC" | "BLK" | "SES" | "SP" | "BLK/BLK" | "LLOQ" | "ULOQ" | "Subject" | "Pooled Plasma" | "Matrix Lot";
   level?: string;
   conc: string | null;
   subject?: string;
@@ -57,20 +57,36 @@ export type ApsEntry = {
 // ── NEW: CC Set (prepared batch of CC calibrators in the freezer) ───────────
 
 export type CCSetLevel = {
-  tubeId: string;   // e.g. "CC-001-L1"
-  level: string;    // "CC1"
+  tubeId: string;   // e.g. "SET-1-ST-1"
+  level: string;    // "ST-1" — ST-1 is the highest standard, last is the lowest
   conc: string;     // nominal concentration (number only, e.g. "1.00")
   unit: string;     // "ng/mL"
 };
 
+// Every CC set carries its own blank + double-blank replicates (BLK-1/BLK-2,
+// BLK/BLK-1/BLK/BLK-2) alongside the standards — not a project-wide "other sample".
+export type CCSetBlank = {
+  tubeId: string;   // e.g. "SET-1-BLK-1"
+  label: string;    // "BLK-1" or "BLK/BLK-1"
+  kind: "BLK" | "BLK/BLK";
+};
+
 export type CCSet = {
-  id: string;       // "CC-001"
+  id: string;       // "SET-1" — numbered per project + analyte, based on how many
+                     // bulk-spiked CC sets are stored for that project/analyte
   project: string;
   analyte: string;
   apsRef: string;   // e.g. "APS042.02"
   prepDate: string;
   levels: CCSetLevel[];
+  blanks: CCSetBlank[];
 };
+
+// "SET-1" is only unique within a project+analyte (e.g. MET and MET-G both have
+// their own SET-1) — use this composite key wherever a CC set must be looked up.
+export function ccSetKey(s: Pick<CCSet, "project" | "analyte" | "id">): string {
+  return `${s.project}::${s.analyte}::${s.id}`;
+}
 
 // ── NEW: QC Sample (individual prepared QC batch with ID) ──────────────────
 // CC and QC samples are consumables — retrieved, used in the run, then discarded.
@@ -145,76 +161,55 @@ export const PROJECT_APS: Record<string, Record<string, ApsEntry>> = {
 
 // ── CC Sets (prepared calibrator batches stored in Freezer Room) ──────────
 
+// Builds the standard ladder for a CC set, listed ST-1 (highest nominal conc)
+// through ST-N (lowest) — pass concentrations lowest-to-highest, they're reversed here.
+function buildStandards(setId: string, concsAscending: string[], unit = "ng/mL"): CCSetLevel[] {
+  return [...concsAscending].reverse().map((conc, idx) => {
+    const stNo = idx + 1; // idx 0 = highest conc = ST-1
+    return { tubeId: `${setId}-ST-${stNo}`, level: `ST-${stNo}`, conc, unit };
+  });
+}
+
+// Every CC set carries 2 blank replicates and 2 double-blank replicates.
+function buildBlanks(setId: string): CCSetBlank[] {
+  return [
+    { tubeId: `${setId}-BLK-1`,     label: "BLK-1",     kind: "BLK"     },
+    { tubeId: `${setId}-BLK-2`,     label: "BLK-2",     kind: "BLK"     },
+    { tubeId: `${setId}-BLKBLK-1`,  label: "BLK/BLK-1",  kind: "BLK/BLK" },
+    { tubeId: `${setId}-BLKBLK-2`,  label: "BLK/BLK-2",  kind: "BLK/BLK" },
+  ];
+}
+
 export const CC_SETS: CCSet[] = [
   {
-    id: "CC-001", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
+    id: "SET-1", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
     prepDate: "02 May 2026",
-    levels: [
-      { tubeId:"CC-001-L1", level:"CC1", conc:"1.00",   unit:"ng/mL" },
-      { tubeId:"CC-001-L2", level:"CC2", conc:"2.00",   unit:"ng/mL" },
-      { tubeId:"CC-001-L3", level:"CC3", conc:"5.00",   unit:"ng/mL" },
-      { tubeId:"CC-001-L4", level:"CC4", conc:"10.00",  unit:"ng/mL" },
-      { tubeId:"CC-001-L5", level:"CC5", conc:"20.00",  unit:"ng/mL" },
-      { tubeId:"CC-001-L6", level:"CC6", conc:"50.00",  unit:"ng/mL" },
-      { tubeId:"CC-001-L7", level:"CC7", conc:"100.00", unit:"ng/mL" },
-      { tubeId:"CC-001-L8", level:"CC8", conc:"200.00", unit:"ng/mL" },
-    ],
+    levels: buildStandards("SET-1", ["1.00","2.00","5.00","10.00","20.00","50.00","100.00","200.00"]),
+    blanks: buildBlanks("SET-1"),
   },
   {
-    id: "CC-002", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
+    id: "SET-2", project: "SID-2026-001", analyte: "MET", apsRef: "APS042.02",
     prepDate: "10 May 2026",
-    levels: [
-      { tubeId:"CC-002-L1", level:"CC1", conc:"1.00",   unit:"ng/mL" },
-      { tubeId:"CC-002-L2", level:"CC2", conc:"2.00",   unit:"ng/mL" },
-      { tubeId:"CC-002-L3", level:"CC3", conc:"5.00",   unit:"ng/mL" },
-      { tubeId:"CC-002-L4", level:"CC4", conc:"10.00",  unit:"ng/mL" },
-      { tubeId:"CC-002-L5", level:"CC5", conc:"20.00",  unit:"ng/mL" },
-      { tubeId:"CC-002-L6", level:"CC6", conc:"50.00",  unit:"ng/mL" },
-      { tubeId:"CC-002-L7", level:"CC7", conc:"100.00", unit:"ng/mL" },
-      { tubeId:"CC-002-L8", level:"CC8", conc:"200.00", unit:"ng/mL" },
-    ],
+    levels: buildStandards("SET-2", ["1.00","2.00","5.00","10.00","20.00","50.00","100.00","200.00"]),
+    blanks: buildBlanks("SET-2"),
   },
   {
-    id: "CC-003", project: "SID-2026-001", analyte: "MET-G", apsRef: "APS043.01",
+    id: "SET-1", project: "SID-2026-001", analyte: "MET-G", apsRef: "APS043.01",
     prepDate: "02 May 2026",
-    levels: [
-      { tubeId:"CC-003-L1", level:"CC1", conc:"0.50",   unit:"ng/mL" },
-      { tubeId:"CC-003-L2", level:"CC2", conc:"1.00",   unit:"ng/mL" },
-      { tubeId:"CC-003-L3", level:"CC3", conc:"2.00",   unit:"ng/mL" },
-      { tubeId:"CC-003-L4", level:"CC4", conc:"5.00",   unit:"ng/mL" },
-      { tubeId:"CC-003-L5", level:"CC5", conc:"10.00",  unit:"ng/mL" },
-      { tubeId:"CC-003-L6", level:"CC6", conc:"25.00",  unit:"ng/mL" },
-      { tubeId:"CC-003-L7", level:"CC7", conc:"50.00",  unit:"ng/mL" },
-      { tubeId:"CC-003-L8", level:"CC8", conc:"100.00", unit:"ng/mL" },
-    ],
+    levels: buildStandards("SET-1", ["0.50","1.00","2.00","5.00","10.00","25.00","50.00","100.00"]),
+    blanks: buildBlanks("SET-1"),
   },
   {
-    id: "CC-004", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
+    id: "SET-1", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
     prepDate: "05 May 2026",
-    levels: [
-      { tubeId:"CC-004-L1", level:"CC1", conc:"0.10",  unit:"ng/mL" },
-      { tubeId:"CC-004-L2", level:"CC2", conc:"0.20",  unit:"ng/mL" },
-      { tubeId:"CC-004-L3", level:"CC3", conc:"0.50",  unit:"ng/mL" },
-      { tubeId:"CC-004-L4", level:"CC4", conc:"1.00",  unit:"ng/mL" },
-      { tubeId:"CC-004-L5", level:"CC5", conc:"2.00",  unit:"ng/mL" },
-      { tubeId:"CC-004-L6", level:"CC6", conc:"5.00",  unit:"ng/mL" },
-      { tubeId:"CC-004-L7", level:"CC7", conc:"10.00", unit:"ng/mL" },
-      { tubeId:"CC-004-L8", level:"CC8", conc:"20.00", unit:"ng/mL" },
-    ],
+    levels: buildStandards("SET-1", ["0.10","0.20","0.50","1.00","2.00","5.00","10.00","20.00"]),
+    blanks: buildBlanks("SET-1"),
   },
   {
-    id: "CC-005", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
+    id: "SET-2", project: "SID-2026-002", analyte: "AML", apsRef: "APS017.03",
     prepDate: "14 May 2026",
-    levels: [
-      { tubeId:"CC-005-L1", level:"CC1", conc:"0.10",  unit:"ng/mL" },
-      { tubeId:"CC-005-L2", level:"CC2", conc:"0.20",  unit:"ng/mL" },
-      { tubeId:"CC-005-L3", level:"CC3", conc:"0.50",  unit:"ng/mL" },
-      { tubeId:"CC-005-L4", level:"CC4", conc:"1.00",  unit:"ng/mL" },
-      { tubeId:"CC-005-L5", level:"CC5", conc:"2.00",  unit:"ng/mL" },
-      { tubeId:"CC-005-L6", level:"CC6", conc:"5.00",  unit:"ng/mL" },
-      { tubeId:"CC-005-L7", level:"CC7", conc:"10.00", unit:"ng/mL" },
-      { tubeId:"CC-005-L8", level:"CC8", conc:"20.00", unit:"ng/mL" },
-    ],
+    levels: buildStandards("SET-2", ["0.10","0.20","0.50","1.00","2.00","5.00","10.00","20.00"]),
+    blanks: buildBlanks("SET-2"),
   },
 ];
 
@@ -257,8 +252,6 @@ export const OTHER_SAMPLE_ITEMS: OtherSampleItem[] = [
   { id:"SES-003", project:"SID-2026-001", analyte:"MET", type:"SES",         label:"SES-003",                    status:"available" },
   { id:"SP-001",  project:"SID-2026-001", analyte:"MET", type:"SP",          label:"SP-001",                     status:"available" },
   { id:"SP-002",  project:"SID-2026-001", analyte:"MET", type:"SP",          label:"SP-002",                     status:"available" },
-  { id:"BLK-001", project:"SID-2026-001", analyte:"MET", type:"BLK/BLK",     label:"BLK/BLK-001",               status:"available" },
-  { id:"BLK-002", project:"SID-2026-001", analyte:"MET", type:"BLK/BLK",     label:"BLK/BLK-002",               status:"available" },
   { id:"LLOQS-001",project:"SID-2026-001",analyte:"MET", type:"LLOQ",        label:"LLOQ-001",                   status:"available" },
   { id:"LLOQS-002",project:"SID-2026-001",analyte:"MET", type:"LLOQ",        label:"LLOQ-002",                   status:"available" },
   { id:"ULOQS-001",project:"SID-2026-001",analyte:"MET", type:"ULOQ",        label:"ULOQ-001",                   status:"available" },
@@ -268,37 +261,15 @@ export const OTHER_SAMPLE_ITEMS: OtherSampleItem[] = [
   { id:"ML-002",  project:"SID-2026-001", analyte:"MET", type:"Matrix Lot",   label:"ML-002 (Lot BIO-2026-04)",  status:"available" },
   // SID-2026-001 / MET-G
   { id:"SES-G-001",project:"SID-2026-001",analyte:"MET-G",type:"SES",        label:"SES-G-001",                  status:"available" },
-  { id:"BLK-G-001",project:"SID-2026-001",analyte:"MET-G",type:"BLK/BLK",   label:"BLK/BLK-G-001",             status:"available" },
   { id:"PP-G-001", project:"SID-2026-001",analyte:"MET-G",type:"Pooled Plasma",label:"PP-G-001 (Lot PP-2026-C)",status:"available" },
   // SID-2026-002 / AML
   { id:"SES-A-001",project:"SID-2026-002",analyte:"AML",  type:"SES",        label:"SES-A-001",                  status:"available" },
   { id:"SES-A-002",project:"SID-2026-002",analyte:"AML",  type:"SES",        label:"SES-A-002",                  status:"available" },
-  { id:"BLK-A-001",project:"SID-2026-002",analyte:"AML",  type:"BLK/BLK",   label:"BLK/BLK-A-001",             status:"available" },
   { id:"PP-A-001", project:"SID-2026-002",analyte:"AML",  type:"Pooled Plasma",label:"PP-A-001 (Lot PP-2026-D)",status:"available" },
   { id:"ML-A-001", project:"SID-2026-002",analyte:"AML",  type:"Matrix Lot",  label:"ML-A-001 (Lot BIO-2026-05)",status:"available"},
 ];
 
-// ── Mastersheet (available samples from Freezer Room) ──────────────────────
-
-export const MASTERSHEET: MasterSample[] = [
-  { id:"SID-2026-001-007-P1-0H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"007", period:"P1", tp:"0H",   freezer:"FRZ-01", location:"R2-B4-P12", ft:0 },
-  { id:"SID-2026-001-007-P1-0.5H-MET-1", project:"SID-2026-001", analyte:"MET",   subject:"007", period:"P1", tp:"0.5H", freezer:"FRZ-01", location:"R2-B4-P13", ft:0 },
-  { id:"SID-2026-001-007-P1-1H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"007", period:"P1", tp:"1H",   freezer:"FRZ-01", location:"R2-B4-P14", ft:1 },
-  { id:"SID-2026-001-007-P1-2H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"007", period:"P1", tp:"2H",   freezer:"FRZ-01", location:"R2-B4-P15", ft:2 },
-  { id:"SID-2026-001-008-P1-0H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"008", period:"P1", tp:"0H",   freezer:"FRZ-01", location:"R2-B5-P01", ft:0 },
-  { id:"SID-2026-001-008-P1-0.5H-MET-1", project:"SID-2026-001", analyte:"MET",   subject:"008", period:"P1", tp:"0.5H", freezer:"FRZ-01", location:"R2-B5-P02", ft:0 },
-  { id:"SID-2026-001-008-P1-1H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"008", period:"P1", tp:"1H",   freezer:"FRZ-01", location:"R2-B5-P03", ft:0 },
-  { id:"SID-2026-001-009-P1-0H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"009", period:"P1", tp:"0H",   freezer:"FRZ-01", location:"R2-B5-P04", ft:0 },
-  { id:"SID-2026-001-009-P1-1H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"009", period:"P1", tp:"1H",   freezer:"FRZ-01", location:"R2-B5-P05", ft:0 },
-  { id:"SID-2026-001-009-P1-2H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"009", period:"P1", tp:"2H",   freezer:"FRZ-01", location:"R2-B5-P06", ft:1 },
-  { id:"SID-2026-001-010-P1-0H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"010", period:"P1", tp:"0H",   freezer:"FRZ-01", location:"R2-B5-P07", ft:0 },
-  { id:"SID-2026-001-010-P1-1H-MET-1",   project:"SID-2026-001", analyte:"MET",   subject:"010", period:"P1", tp:"1H",   freezer:"FRZ-01", location:"R2-B5-P08", ft:0 },
-  { id:"SID-2026-001-007-P1-0H-METG-1",  project:"SID-2026-001", analyte:"MET-G", subject:"007", period:"P1", tp:"0H",   freezer:"FRZ-02", location:"R1-B2-P01", ft:0 },
-  { id:"SID-2026-001-008-P1-0H-METG-1",  project:"SID-2026-001", analyte:"MET-G", subject:"008", period:"P1", tp:"0H",   freezer:"FRZ-02", location:"R1-B2-P02", ft:0 },
-  { id:"SID-2026-002-S01-P1-0H-AML-1",   project:"SID-2026-002", analyte:"AML",   subject:"S01", period:"P1", tp:"0H",   freezer:"FRZ-02", location:"R1-B3-P01", ft:0 },
-  { id:"SID-2026-002-S01-P1-1H-AML-1",   project:"SID-2026-002", analyte:"AML",   subject:"S01", period:"P1", tp:"1H",   freezer:"FRZ-02", location:"R1-B3-P02", ft:0 },
-  { id:"SID-2026-002-S02-P1-0H-AML-1",   project:"SID-2026-002", analyte:"AML",   subject:"S02", period:"P1", tp:"0H",   freezer:"FRZ-02", location:"R1-B3-P03", ft:0 },
-];
+// MASTERSHEET removed — use getApprovedSamples() from ../freezer/mastersheet instead.
 
 // ── Initial ledger ──────────────────────────────────────────────────────────
 
@@ -350,6 +321,7 @@ export function buildDistributionSheet(
   allQcSamples: QCSample[],
   allOtherItems: OtherSampleItem[],
   qcSets: number,
+  selectedBlankTubeIds: Set<string> = new Set(),
 ): SampleRow[] {
   const rows: SampleRow[] = [];
   let pos = 1;
@@ -362,6 +334,16 @@ export function buildDistributionSheet(
       name: `${lvl.level} (${ccSet.id})`,
       type: "CC", level: lvl.level,
       conc: `${lvl.conc} ${lvl.unit}`,
+    });
+  }
+
+  // 1b. Blanks / double blanks belonging to this CC set
+  for (const blk of ccSet.blanks) {
+    if (!selectedBlankTubeIds.has(blk.tubeId)) continue;
+    rows.push({
+      pos: pos++, id: blk.tubeId,
+      name: `${blk.label} (${ccSet.id})`,
+      type: blk.kind, conc: null,
     });
   }
 

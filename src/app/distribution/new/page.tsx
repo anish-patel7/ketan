@@ -5,19 +5,23 @@ import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
 import {
   Button, Select, Table, Input, InputNumber,
-  Checkbox, Tabs, Tooltip, message,
+  Checkbox, Tabs, Tooltip, message, Segmented,
 } from "antd";
 import {
   ArrowLeft, FlaskConical, Lock, Unlock, FileDown,
-  CheckCircle2, GripVertical,
+  CheckCircle2, GripVertical, LayoutGrid, ExternalLink,
 } from "lucide-react";
 import {
-  PROJECTS_LIST, MASTERSHEET, PROJECT_APS,
+  PROJECTS_LIST, PROJECT_APS,
   CC_SETS, QC_SAMPLES, OTHER_SAMPLE_ITEMS,
-  buildDistributionSheet, nextRunNo, nextDsId, addDsRecord, loadDsRecords,
+  buildDistributionSheet, nextRunNo, nextDsId, addDsRecord, loadDsRecords, ccSetKey,
   type DSRecord, type SampleRow, type SelectedQcMap,
   type QCSample, type OtherSampleItem,
 } from "../data";
+import {
+  getMastersheetForProject, formatSubjectLabel,
+  type MasterSheetSampleStatus,
+} from "../../freezer/mastersheet";
 import { TYPE_COLORS } from "../runColumns";
 
 const { Option } = Select;
@@ -25,7 +29,6 @@ const { Option } = Select;
 const OTHER_TYPES: Array<{ type: OtherSampleItem["type"]; label: string }> = [
   { type: "SES",          label: "SES"          },
   { type: "SP",           label: "SP"           },
-  { type: "BLK/BLK",     label: "BLK / BLK"    },
   { type: "LLOQ",         label: "LLOQ"         },
   { type: "ULOQ",         label: "ULOQ"         },
   { type: "Pooled Plasma",label: "Pooled Plasma" },
@@ -39,6 +42,7 @@ export default function NewDistributionPage() {
   const [dProject,          setDProject]          = useState("");
   const [selectedCcSetId,   setSelectedCcSetId]   = useState("");
   const [selectedCcTubeIds, setSelectedCcTubeIds] = useState<Set<string>>(new Set());
+  const [selectedBlankIds,  setSelectedBlankIds]  = useState<Set<string>>(new Set());
   const [selHqc,            setSelHqc]            = useState<string[]>([]);
   const [selMqc,            setSelMqc]            = useState<string[]>([]);
   const [selLqc,            setSelLqc]            = useState<string[]>([]);
@@ -46,6 +50,9 @@ export default function NewDistributionPage() {
   const [dQcSets,           setDQcSets]           = useState(1);
   const [selectedOtherIds,  setSelectedOtherIds]  = useState<string[]>([]);
   const [dRunName,          setDRunName]           = useState("");
+  const [dPeriod,           setDPeriod]            = useState("");
+  const [subjectMode,       setSubjectMode]        = useState<"auto" | "manual">("auto");
+  const [manualSubjectIds,  setManualSubjectIds]   = useState<Set<string>>(new Set());
 
   // ── Sheet state ───────────────────────────────────────────────────────────
   const [sheetRows,  setSheetRows]  = useState<SampleRow[]>([]);
@@ -56,9 +63,29 @@ export default function NewDistributionPage() {
   const [dragOverIdx,setDragOverIdx]= useState<number | null>(null);
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const dCcSet   = CC_SETS.find(s => s.id === selectedCcSetId);
+  const dCcSet   = CC_SETS.find(s => ccSetKey(s) === selectedCcSetId);
   const dAnalyte = dCcSet?.analyte ?? "";
   const dApsData = dProject && dAnalyte ? PROJECT_APS[dProject]?.[dAnalyte] : undefined;
+
+  // Mastersheet-derived subject info
+  const activeMastersheet = dProject ? getMastersheetForProject(dProject) : undefined;
+  const availPeriods       = activeMastersheet?.periods ?? [];
+  const allMsSamples       = dProject && dAnalyte
+    ? (activeMastersheet?.samples ?? []).filter(s => s.analyte === dAnalyte)
+    : [];
+  const periodMsSamples    = dPeriod
+    ? allMsSamples.filter(s => s.period === dPeriod)
+    : allMsSamples;
+  const availSubjectSamples = periodMsSamples.filter(s => s.status === "available");
+  const msExcludedCount     = periodMsSamples.filter(s => s.status === "excluded").length;
+  const msMissingCount      = periodMsSamples.filter(s => s.status === "missing").length;
+  const uniqueSubjects      = [...new Set(availSubjectSamples.map(s => s.subject))];
+  const subjectSummary      = uniqueSubjects.map(subject => {
+    const avail = availSubjectSamples.filter(s => s.subject === subject).length;
+    const total = periodMsSamples.filter(s => s.subject === subject).length;
+    const period = dPeriod || (activeMastersheet?.periods[0] ?? "P1");
+    return { subject, avail, total, label: formatSubjectLabel(subject, period) };
+  });
 
   const ccSetsForProject = CC_SETS.filter(s => s.project === dProject);
 
@@ -80,19 +107,38 @@ export default function NewDistributionPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
   function resetProject(projectId: string) {
     setDProject(projectId);
-    setSelectedCcSetId(""); setSelectedCcTubeIds(new Set());
+    setSelectedCcSetId(""); setSelectedCcTubeIds(new Set()); setSelectedBlankIds(new Set());
     setSelHqc([]); setSelMqc([]); setSelLqc([]); setSelLloqQc([]);
     setSelectedOtherIds([]);
+    setDPeriod("");
+    setSubjectMode("auto"); setManualSubjectIds(new Set());
     setSheetRows([]); setSheetBuilt(false); setSheetLocked(false);
   }
 
-  function handleCcSetSelect(id: string) {
-    setSelectedCcSetId(id);
+  function handleCcSetSelect(key: string) {
+    setSelectedCcSetId(key);
     setSheetRows([]); setSheetBuilt(false); setSheetLocked(false);
-    const ccSet = CC_SETS.find(s => s.id === id);
-    if (ccSet) setSelectedCcTubeIds(new Set(ccSet.levels.map(l => l.tubeId)));
+    const ccSet = CC_SETS.find(s => ccSetKey(s) === key);
+    if (ccSet) {
+      setSelectedCcTubeIds(new Set(ccSet.levels.map(l => l.tubeId)));
+      setSelectedBlankIds(new Set(ccSet.blanks.map(b => b.tubeId)));
+    }
     setSelHqc([]); setSelMqc([]); setSelLqc([]); setSelLloqQc([]);
     setSelectedOtherIds([]);
+    setManualSubjectIds(new Set());
+  }
+
+  function handlePeriodChange(period: string) {
+    setDPeriod(period);
+    setManualSubjectIds(new Set());
+  }
+
+  function toggleManualSubject(id: string, checked: boolean) {
+    setManualSubjectIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
   }
 
   function toggleQcId(type: "hqc"|"mqc"|"lqc"|"lloqQc", id: string, checked: boolean) {
@@ -113,10 +159,13 @@ export default function NewDistributionPage() {
   function buildSheet() {
     if (!dCcSet || !dProject) return;
     const qcIds: SelectedQcMap = { hqc: selHqc, mqc: selMqc, lqc: selLqc, lloqQc: selLloqQc };
-    const subjects = MASTERSHEET.filter(s => s.project === dProject && s.analyte === dAnalyte);
+    const subjects = subjectMode === "manual"
+      ? availSubjectSamples.filter(s => manualSubjectIds.has(s.id))
+      : availSubjectSamples;
     const rows = buildDistributionSheet(
       dCcSet, selectedCcTubeIds, qcIds, subjects,
       selectedOtherIds, QC_SAMPLES, OTHER_SAMPLE_ITEMS, dQcSets,
+      selectedBlankIds,
     );
     setSheetRows(rows);
     setSheetBuilt(true);
@@ -413,7 +462,7 @@ export default function NewDistributionPage() {
               <Select style={{ width: "100%" }} placeholder={dProject ? "Select CC set…" : "Select project first"}
                 value={selectedCcSetId || undefined} onChange={handleCcSetSelect} disabled={!dProject}>
                 {ccSetsForProject.map(s => (
-                  <Option key={s.id} value={s.id}>
+                  <Option key={ccSetKey(s)} value={ccSetKey(s)}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12, color: "var(--accent)" }}>
                         {s.id}
@@ -453,6 +502,31 @@ export default function NewDistributionPage() {
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
                     {selectedCcTubeIds.size} / {dCcSet.levels.length} levels selected
                   </div>
+
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8, marginBottom: 2 }}>
+                    Blanks in {dCcSet.id} — uncheck to exclude
+                  </div>
+                  {dCcSet.blanks.map(blk => (
+                    <label key={blk.tubeId} style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
+                      borderRadius: 6, cursor: "pointer",
+                      background: selectedBlankIds.has(blk.tubeId) ? "white" : "transparent",
+                      border: `1px solid ${selectedBlankIds.has(blk.tubeId) ? "var(--accent)" : "var(--border)"}`,
+                      transition: "all 0.1s",
+                    }}>
+                      <Checkbox checked={selectedBlankIds.has(blk.tubeId)}
+                        onChange={e => {
+                          const next = new Set(selectedBlankIds);
+                          if (e.target.checked) next.add(blk.tubeId); else next.delete(blk.tubeId);
+                          setSelectedBlankIds(next);
+                        }} />
+                      <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "var(--text-secondary)", minWidth: 56 }}>{blk.label}</span>
+                      <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{blk.tubeId}</span>
+                    </label>
+                  ))}
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                    {selectedBlankIds.size} / {dCcSet.blanks.length} blanks selected
+                  </div>
                   {dApsData && (
                     <div style={{ marginTop: 4, padding: "6px 10px", borderRadius: 6,
                       background: "var(--accent-light)", border: "1px solid #c2d4b8", fontSize: 11, color: "var(--accent)" }}>
@@ -462,6 +536,168 @@ export default function NewDistributionPage() {
                 </div>
               )}
             </section>
+
+            {/* Subject Samples from Mastersheet */}
+            {dCcSet && activeMastersheet && (
+              <section style={{
+                padding:"12px 14px", borderRadius:10,
+                background:"var(--bg-card)", border:"1px solid var(--border)",
+              }}>
+                <div style={{
+                  display:"flex", alignItems:"center", gap:6,
+                  fontSize:10, fontWeight:700, letterSpacing:"0.07em",
+                  textTransform:"uppercase", color:"var(--accent)", marginBottom:10,
+                }}>
+                  <LayoutGrid size={11} />
+                  Subject Samples · Mastersheet
+                </div>
+
+                {/* Auto / Manual mode */}
+                <Segmented
+                  block size="small"
+                  value={subjectMode}
+                  onChange={v => setSubjectMode(v as "auto" | "manual")}
+                  options={[
+                    { label: "Auto (all available)", value: "auto" },
+                    { label: "Manual (pick samples)", value: "manual" },
+                  ]}
+                  style={{ marginBottom: 10 }}
+                />
+
+                {/* Period selector */}
+                {availPeriods.length > 1 && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                    <span style={{ fontSize:11, color:"var(--text-secondary)", whiteSpace:"nowrap" }}>
+                      Period
+                    </span>
+                    <Select
+                      size="small" style={{ flex:1 }}
+                      value={dPeriod || undefined}
+                      placeholder="All periods"
+                      allowClear
+                      onChange={v => handlePeriodChange(v ?? "")}
+                    >
+                      {availPeriods.map(p => <Option key={p} value={p}>{p}</Option>)}
+                    </Select>
+                  </div>
+                )}
+
+                {/* Stats row */}
+                <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
+                  {[
+                    { label:"Available", v:availSubjectSamples.length, bg:"#E8F5E9", color:"#2E7D32" },
+                    { label:"Excluded",  v:msExcludedCount,            bg:"#FFEBEE", color:"#C62828" },
+                    { label:"Missing",   v:msMissingCount,             bg:"#F5F5F5", color:"#9E9E9E" },
+                  ].map(s => s.v > 0 ? (
+                    <div key={s.label} style={{
+                      padding:"2px 8px", borderRadius:5,
+                      background:s.bg, fontSize:11,
+                    }}>
+                      <span style={{ fontWeight:700, color:s.color }}>{s.v}</span>
+                      <span style={{ color:s.color, marginLeft:3 }}>{s.label}</span>
+                    </div>
+                  ) : null)}
+                </div>
+
+                {subjectMode === "auto" ? (
+                  /* Subject grid — read-only availability summary */
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:8 }}>
+                    {subjectSummary.map(({ subject, avail, total, label }) => {
+                      const allOk = avail === total;
+                      const none  = avail === 0;
+                      return (
+                        <Tooltip key={subject}
+                          title={`Subject ${subject}: ${avail}/${total} available`}>
+                          <div style={{
+                            width:40, height:40, borderRadius:8, fontSize:10,
+                            display:"flex", flexDirection:"column",
+                            alignItems:"center", justifyContent:"center",
+                            background: allOk ? "#E8F5E9" : none ? "#FFEBEE" : "#FFF8E1",
+                            border:`1px solid ${allOk ? "#81C784" : none ? "#EF9A9A" : "#FFB74D"}`,
+                            color: allOk ? "#2E7D32" : none ? "#C62828" : "#E65100",
+                            cursor:"default",
+                          }}>
+                            <span style={{
+                              fontWeight:700, fontSize:11, fontFamily:"monospace",
+                              lineHeight:1.2,
+                            }}>
+                              {label}
+                            </span>
+                            <span style={{ fontSize:9, lineHeight:1.2 }}>{avail}</span>
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
+                    {subjectSummary.length === 0 && (
+                      <span style={{ fontSize:11, color:"var(--text-muted)", fontStyle:"italic" }}>
+                        No available samples in mastersheet
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  /* Manual checklist — pick exact sample numbers */
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                      <span style={{ fontSize:10, color:"var(--text-muted)" }}>
+                        {manualSubjectIds.size} / {availSubjectSamples.length} selected
+                      </span>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <a style={{ fontSize:10, color:"var(--accent)", cursor:"pointer" }}
+                          onClick={() => setManualSubjectIds(new Set(availSubjectSamples.map(s => s.id)))}>
+                          Select all
+                        </a>
+                        <a style={{ fontSize:10, color:"var(--text-muted)", cursor:"pointer" }}
+                          onClick={() => setManualSubjectIds(new Set())}>
+                          Clear
+                        </a>
+                      </div>
+                    </div>
+                    <div style={{
+                      maxHeight: 220, overflowY: "auto", display:"flex",
+                      flexDirection:"column", gap:3, padding:2,
+                      border:"1px solid var(--border)", borderRadius:7, background:"white",
+                    }}>
+                      {availSubjectSamples.map(s => {
+                        const checked = manualSubjectIds.has(s.id);
+                        return (
+                          <label key={s.id} style={{
+                            display:"flex", alignItems:"center", gap:8,
+                            padding:"4px 8px", borderRadius:6, cursor:"pointer",
+                            background: checked ? "var(--accent-light)" : "transparent",
+                          }}>
+                            <Checkbox checked={checked}
+                              onChange={e => toggleManualSubject(s.id, e.target.checked)} />
+                            <span style={{ fontFamily:"monospace", fontSize:11, fontWeight:700 }}>
+                              {formatSubjectLabel(s.subject, s.period)}
+                            </span>
+                            <span style={{ fontSize:10, color:"var(--text-muted)" }}>{s.tp}</span>
+                          </label>
+                        );
+                      })}
+                      {availSubjectSamples.length === 0 && (
+                        <span style={{ fontSize:11, color:"var(--text-muted)", fontStyle:"italic", padding:"4px 8px" }}>
+                          No available samples in mastersheet
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ fontSize:10, color:"var(--text-muted)", lineHeight:1.5 }}>
+                  Clinic: {activeMastersheet.clinic}
+                </div>
+                <a
+                  href="/freezer"
+                  target="_blank"
+                  style={{
+                    display:"inline-flex", alignItems:"center", gap:4,
+                    fontSize:11, color:"var(--accent)", marginTop:6, textDecoration:"none",
+                  }}
+                >
+                  <ExternalLink size={10} /> View full matrix in Freezer Room
+                </a>
+              </section>
+            )}
 
             {/* Step 3 — QC Sample IDs */}
             {dCcSet && (

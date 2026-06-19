@@ -9,7 +9,7 @@ import {
 } from "antd";
 import {
   ArrowLeft, FlaskConical, Lock, Unlock, FileDown,
-  CheckCircle2, GripVertical, LayoutGrid, ExternalLink,
+  CheckCircle2, GripVertical, LayoutGrid, ExternalLink, TestTube2,
 } from "lucide-react";
 import {
   PROJECTS_LIST, PROJECT_APS,
@@ -141,15 +141,20 @@ export default function NewDistributionPage() {
     });
   }
 
+  const qcSetters: Record<"hqc"|"mqc"|"lqc"|"lloqQc", [string[], React.Dispatch<React.SetStateAction<string[]>>]> = {
+    hqc:    [selHqc,    setSelHqc],
+    mqc:    [selMqc,    setSelMqc],
+    lqc:    [selLqc,    setSelLqc],
+    lloqQc: [selLloqQc, setSelLloqQc],
+  };
+
   function toggleQcId(type: "hqc"|"mqc"|"lqc"|"lloqQc", id: string, checked: boolean) {
-    const map = {
-      hqc:    [selHqc,    setSelHqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
-      mqc:    [selMqc,    setSelMqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
-      lqc:    [selLqc,    setSelLqc]    as [string[], React.Dispatch<React.SetStateAction<string[]>>],
-      lloqQc: [selLloqQc, setSelLloqQc] as [string[], React.Dispatch<React.SetStateAction<string[]>>],
-    };
-    const [cur, set] = map[type];
+    const [cur, set] = qcSetters[type];
     set(checked ? [...cur, id] : cur.filter(x => x !== id));
+  }
+
+  function setQcGroup(type: "hqc"|"mqc"|"lqc"|"lloqQc", ids: string[]) {
+    qcSetters[type][1](ids);
   }
 
   function toggleOtherId(id: string, checked: boolean) {
@@ -244,29 +249,60 @@ export default function NewDistributionPage() {
   }
 
   // ── QC group component ────────────────────────────────────────────────────
+  const QC_TYPE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+    HQC:      { bg: "#FDECEA", color: "#B71C1C", border: "#EF9A9A" },
+    MQC:      { bg: "#FFF4E0", color: "#B86E00", border: "#FFCC80" },
+    LQC:      { bg: "#E8F5E9", color: "#2E7D32", border: "#A5D6A7" },
+    "LLOQ QC":{ bg: "#E3F2FD", color: "#1565C0", border: "#90CAF9" },
+  };
+
   function QcGroup({ label, options, selected, type }: {
     label: string; options: QCSample[]; selected: string[]; type: "hqc"|"mqc"|"lqc"|"lloqQc";
   }) {
     if (options.length === 0) return null;
+    const swatch = QC_TYPE_COLORS[label] ?? { bg: "var(--bg-card)", color: "var(--text-secondary)", border: "var(--border)" };
+    const allSelected = selected.length === options.length;
     return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
-          color: "var(--text-muted)", marginBottom: 6 }}>{label}</div>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+            padding: "2px 7px", borderRadius: 5,
+            background: swatch.bg, color: swatch.color,
+          }}>
+            {label}
+          </span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            {selected.length} / {options.length} selected
+          </span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <a style={{ fontSize: 10, color: "var(--accent)", cursor: "pointer" }}
+              onClick={() => setQcGroup(type, allSelected ? [] : options.map(o => o.id))}>
+              {allSelected ? "Clear" : "Select all"}
+            </a>
+          </div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {options.map(q => (
-            <label key={q.id} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
-              borderRadius: 7, cursor: "pointer",
-              background: selected.includes(q.id) ? "var(--accent-light)" : "white",
-              border: `1px solid ${selected.includes(q.id) ? "var(--accent)" : "var(--border)"}`,
-              transition: "all 0.12s",
-            }}>
-              <Checkbox checked={selected.includes(q.id)}
-                onChange={e => toggleQcId(type, q.id, e.target.checked)} />
-              <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>{q.id}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{q.prepDate}</span>
-            </label>
-          ))}
+          {options.map(q => {
+            const checked = selected.includes(q.id);
+            return (
+              <label key={q.id} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
+                borderRadius: 7, cursor: "pointer",
+                background: checked ? "var(--accent-light)" : "white",
+                border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+                transition: "all 0.12s",
+              }}>
+                <Checkbox checked={checked}
+                  onChange={e => toggleQcId(type, q.id, e.target.checked)} />
+                <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>{q.id}</span>
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", marginLeft: "auto", lineHeight: 1.3 }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{q.conc} ng/mL</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{q.prepDate}</span>
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
     );
@@ -703,19 +739,68 @@ export default function NewDistributionPage() {
             {dCcSet && (
               <section>
                 <div className="step-label">3 · QC Sample IDs</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
-                  Select the specific QC batch IDs for this run. For fast/fasted studies, pick separate IDs per condition.
-                </div>
-                <QcGroup label="HQC"     options={hqcOptions}    selected={selHqc}    type="hqc"    />
-                <QcGroup label="MQC"     options={mqcOptions}    selected={selMqc}    type="mqc"    />
-                <QcGroup label="LQC"     options={lqcOptions}    selected={selLqc}    type="lqc"    />
-                <QcGroup label="LLOQ QC" options={lloqQcOptions} selected={selLloqQc} type="lloqQc" />
+                <div style={{
+                  padding: "12px 14px", borderRadius: 10,
+                  background: "var(--bg-card)", border: "1px solid var(--border)",
+                }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    fontSize: 10, fontWeight: 700, letterSpacing: "0.07em",
+                    textTransform: "uppercase", color: "var(--accent)", marginBottom: 8,
+                  }}>
+                    <TestTube2 size={11} />
+                    QC Batch Selection
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                    Select the specific QC batch IDs for this run. For fast/fasted studies, pick separate IDs per condition.
+                  </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                  <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>QC Sets</span>
-                  <InputNumber min={1} max={5} value={dQcSets} onChange={v => setDQcSets(v ?? 1)}
-                    style={{ width: 64 }} size="small" />
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>blocks per run</span>
+                  {/* Stats row */}
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                    {[
+                      { label: "HQC",      v: selHqc.length    },
+                      { label: "MQC",      v: selMqc.length    },
+                      { label: "LQC",      v: selLqc.length    },
+                      { label: "LLOQ QC",  v: selLloqQc.length },
+                    ].map(s => {
+                      const swatch = QC_TYPE_COLORS[s.label];
+                      return (
+                        <div key={s.label} style={{
+                          padding: "2px 8px", borderRadius: 5,
+                          background: s.v > 0 ? swatch.bg : "var(--bg-card)",
+                          border: `1px solid ${s.v > 0 ? swatch.border : "var(--border)"}`,
+                          fontSize: 11,
+                        }}>
+                          <span style={{ fontWeight: 700, color: s.v > 0 ? swatch.color : "var(--text-muted)" }}>{s.v}</span>
+                          <span style={{ color: s.v > 0 ? swatch.color : "var(--text-muted)", marginLeft: 3 }}>{s.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{
+                    maxHeight: 320, overflowY: "auto", padding: 2,
+                  }}>
+                    <QcGroup label="HQC"     options={hqcOptions}    selected={selHqc}    type="hqc"    />
+                    <QcGroup label="MQC"     options={mqcOptions}    selected={selMqc}    type="mqc"    />
+                    <QcGroup label="LQC"     options={lqcOptions}    selected={selLqc}    type="lqc"    />
+                    <QcGroup label="LLOQ QC" options={lloqQcOptions} selected={selLloqQc} type="lloqQc" />
+                  </div>
+
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10, marginTop: 10,
+                    paddingTop: 10, borderTop: "1px solid var(--border)",
+                  }}>
+                    <Tooltip title="QC IDs are cycled across this many blocks, interspersed between subject samples">
+                      <span style={{
+                        fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap",
+                        cursor: "help", borderBottom: "1px dashed var(--border)",
+                      }}>QC Sets</span>
+                    </Tooltip>
+                    <InputNumber min={1} max={5} value={dQcSets} onChange={v => setDQcSets(v ?? 1)}
+                      style={{ width: 64 }} size="small" />
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>blocks per run</span>
+                  </div>
                 </div>
               </section>
             )}
